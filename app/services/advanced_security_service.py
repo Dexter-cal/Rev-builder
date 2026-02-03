@@ -91,6 +91,15 @@ class HardwareInterfaceService:
         self.db.commit()
         return job
 
+    def discover_connected_devices(self):
+        # Simulated discovery of USB/Serial devices
+        return [
+            {"id": "usb_0", "name": "USB Serial Adapter", "vendor": "FTDI", "product": "FT232R", "port": "/dev/ttyUSB0"},
+            {"id": "usb_1", "name": "ST-Link V2", "vendor": "STMicroelectronics", "product": "Debug Probe", "port": "swd://st-link"},
+            {"id": "usb_2", "name": "HackRF One", "vendor": "Great Scott Gadgets", "product": "SDR", "port": "usb:001:004"},
+            {"id": "usb_3", "name": "J-Link", "vendor": "SEGGER", "product": "Base Compact", "port": "jlink://serial_123"}
+        ]
+
 class SettingsService:
     def __init__(self, db: Session):
         self.db = db

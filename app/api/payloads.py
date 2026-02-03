@@ -18,7 +18,11 @@ def generate_payload(finding_id: int, name: str, obfuscation: Optional[str] = "l
     return {"message": "Payload generated", "payload_id": payload.id, "base_code": payload.base_code}
 
 @router.post("/{payload_id}/morph")
-def morph_payload(payload_id: int, db: Session = Depends(get_db)):
+def morph_payload(payload_id: int, count: int = 1, db: Session = Depends(get_db)):
+    if count > 1:
+        created = ExploitService.generate_mass_variants(db, payload_id, count)
+        return {"message": f"Successfully generated {created} morphed variants."}
+
     payload = db.query(models.Payload).filter(models.Payload.id == payload_id).first()
     if not payload:
         raise HTTPException(status_code=404, detail="Payload not found")
@@ -51,6 +55,11 @@ def morph_payload(payload_id: int, db: Session = Depends(get_db)):
     db.add(variant)
     db.commit()
     return {"message": "Payload morphed", "variant_id": variant.id, "morphed_code": code}
+
+@router.post("/tease/{finding_id}")
+def tease_payloads(finding_id: int, db: Session = Depends(get_db)):
+    payloads = ExploitService.tease_payloads(db, finding_id)
+    return {"message": f"Generated {len(payloads)} teasing payloads", "payloads": payloads}
 
 @router.get("/")
 def get_payloads(db: Session = Depends(get_db)):

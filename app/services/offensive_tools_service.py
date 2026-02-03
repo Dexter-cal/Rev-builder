@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from app.models import models
 import json
+import random
 
 class ProxyService:
     def __init__(self, db: Session):
@@ -85,7 +86,11 @@ class CrackingService:
             return None
 
         # Simulated cracked results
-        cracked = {h: "password123" for h in job.hashes[:2]}
+        if job.hash_type == "LICENSE_KEY":
+            cracked = {h: f"OFFSEC-KEY-{random.randint(1000, 9999)}" for h in job.hashes}
+        else:
+            cracked = {h: "password123" for h in job.hashes[:2]}
+
         job.results = cracked
         job.status = "completed"
 
@@ -93,10 +98,10 @@ class CrackingService:
         for h, p in cracked.items():
             cred = models.Credential(
                 device_id=None,
-                username=f"hash_{h[:8]}",
+                username=f"target_{h[:8]}",
                 password=p,
                 type="cracked",
-                origin=f"Cracking Job: {job.id}"
+                origin=f"Cracking Job: {job.id} ({job.hash_type})"
             )
             self.db.add(cred)
 

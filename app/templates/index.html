@@ -79,6 +79,7 @@
             cloningConfig: { channel: 'network', source: '' },
             consentGiven: false,
             selectedModel: 'Gemini-1.5-Pro',
+            connectedHardware: [],
             explorer: [
                 { name: 'bin', type: 'folder', open: true, children: [
                     { name: 'busybox', type: 'file', vuln: true },
@@ -509,6 +510,26 @@
                 } catch (error) { console.error(error); }
             },
 
+            async discoverHardware() {
+                this.addToTerminal('Scanning local hardware buses (USB/Serial)...');
+                try {
+                    const resp = await fetch('/api/hardware/discover');
+                    this.connectedHardware = await resp.json();
+                    this.addToTerminal('[+] Discovery complete. Found ' + this.connectedHardware.length + ' devices.');
+                } catch (error) { console.error(error); }
+            },
+
+            async teasePayloads(findingId) {
+                this.addToTerminal('Automated Payload Generation (Teasing) initiated for finding #' + findingId + '...');
+                try {
+                    const resp = await fetch('/api/payloads/tease/' + findingId, { method: 'POST' });
+                    const data = await resp.json();
+                    this.addToTerminal('[+] Successfully teased ' + data.payloads.length + ' payloads.');
+                    this.fetchPayloads();
+                    this.activeModule = 'payloads';
+                } catch (error) { console.error(error); }
+            },
+
             async weaponizeFinding(findingId) {
                 this.addToTerminal(`Weaponizing finding #${findingId}...`);
                 try {
@@ -816,6 +837,7 @@
                                     <template x-if="item.vuln">
                                         <div class="flex space-x-1 ml-2">
                                             <button @click="tryToBreak()" class="bg-red-600 hover:bg-red-500 text-white px-2 py-0 rounded text-[9px] font-bold">Break</button>
+                                            <button @click="teasePayloads(1)" class="bg-yellow-600 hover:bg-yellow-500 text-white px-2 py-0 rounded text-[9px] font-bold">Tease</button>
                                             <button @click="weaponizeFinding(1)" class="bg-purple-600 hover:bg-purple-500 text-white px-2 py-0 rounded text-[9px] font-bold">Weaponize</button>
                                         </div>
                                     </template>
@@ -900,6 +922,8 @@
                                     <option>NTLM</option>
                                     <option>MD5</option>
                                     <option>SHA-256</option>
+                                    <option>LICENSE_KEY</option>
+                                    <option>ZIP_PASSWORD</option>
                                 </select>
                             </div>
                             <div>
@@ -967,13 +991,35 @@
 
             <!-- Hardware Lab View -->
             <div x-show="activeModule === 'hardware'" class="flex-grow p-6 overflow-y-auto">
-                <div class="w-full max-w-5xl mx-auto">
+                <div class="w-full max-w-6xl mx-auto">
                     <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-xl font-bold text-slate-300">Hardware Lab / Signal Analysis</h2>
+                        <h2 class="text-xl font-bold text-slate-300">Hardware Lab / Physical Interaction</h2>
                         <div class="flex space-x-2">
+                            <button @click="discoverHardware()" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase flex items-center">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                                Discover Devices
+                            </button>
                             <button @click="triggerHardwareAction('uart', 'sniff')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">Sniff UART</button>
-                            <button @click="triggerHardwareAction('jtag', 'dump')" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">JTAG Memory Dump</button>
-                            <button @click="triggerHardwareAction('sdr', 'sniff')" class="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">SDR Signal Scan</button>
+                            <button @click="triggerHardwareAction('jtag', 'dump')" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">JTAG Dump</button>
+                            <button @click="triggerHardwareAction('usb', 'fuzz')" class="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">USB Fuzz</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-4 gap-6 mb-8">
+                        <template x-for="hw in connectedHardware" :key="hw.id">
+                            <div class="bg-dark-900 border border-slate-700 p-4 rounded-lg relative group">
+                                <div class="w-2 h-2 bg-green-500 rounded-full absolute top-2 right-2 animate-pulse"></div>
+                                <div class="text-[8px] font-bold text-slate-500 uppercase" x-text="hw.vendor"></div>
+                                <div class="text-xs font-bold text-slate-200 mt-1" x-text="hw.name"></div>
+                                <div class="text-[10px] text-blue-400 font-mono mt-2" x-text="hw.port"></div>
+                                <div class="mt-4 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button class="text-[8px] bg-slate-800 px-2 py-1 rounded text-slate-300">Connect</button>
+                                    <button class="text-[8px] bg-red-900/30 px-2 py-1 rounded text-red-400">Tease</button>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="connectedHardware.length === 0" class="col-span-4 border-2 border-dashed border-slate-800 rounded-lg p-8 text-center text-slate-600 italic">
+                            No hardware devices discovered. Connect via USB/Serial and click "Discover".
                         </div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1597,7 +1643,10 @@
                         <h4 class="text-purple-400 text-xs font-bold uppercase">Exploit Strategy</h4>
                     </div>
                     <p class="text-[11px] leading-relaxed text-slate-300 italic">"The strcpy at 0x401215 is vulnerable to a classic stack overflow. I recommend using a ROP chain to bypass DEP/NX. I can generate a Python payload for you."</p>
-                    <button @click="tryToBreak()" class="mt-3 w-full bg-purple-600 hover:bg-purple-700 text-white text-[10px] py-1.5 rounded font-bold uppercase tracking-wider">Generate & Run Exploit</button>
+                    <div class="flex space-x-2 mt-3">
+                        <button @click="tryToBreak()" class="flex-grow bg-purple-600 hover:bg-purple-700 text-white text-[10px] py-1.5 rounded font-bold uppercase tracking-wider">Generate & Run</button>
+                        <button @click="teasePayloads(1)" class="px-3 bg-yellow-600 hover:bg-yellow-700 text-white text-[10px] py-1.5 rounded font-bold uppercase">Tease</button>
+                    </div>
                 </div>
 
                 <div class="space-y-2">
@@ -1618,6 +1667,9 @@
                         <option>Gemini-1.5-Pro</option>
                         <option>GPT-4o</option>
                         <option>Claude-3.5-Sonnet</option>
+                        <option>Claude-3-Opus</option>
+                        <option>Grok-1</option>
+                        <option>Llama-3-70B</option>
                     </select>
                 </div>
                 <div class="relative">

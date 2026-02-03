@@ -11,6 +11,11 @@ def run_action(device_id: int, interface: str, action: str, db: Session = Depend
     service = HardwareInterfaceService(db)
     return service.run_hardware_action(device_id, interface, action)
 
+@router.get("/discover")
+def discover_hardware(db: Session = Depends(get_db)):
+    service = HardwareInterfaceService(db)
+    return service.discover_connected_devices()
+
 @router.get("/jobs/{device_id}")
 def get_jobs(device_id: int, db: Session = Depends(get_db)):
     return db.query(models.HardwareJob).filter(models.HardwareJob.device_id == device_id).all()

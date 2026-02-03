@@ -1,7 +1,22 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, Float, JSON
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, Float, JSON, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.base import Base
+
+# Association tables for many-to-many relationships
+finding_references = Table(
+    "finding_references",
+    Base.metadata,
+    Column("finding_id", Integer, ForeignKey("findings.id"), primary_key=True),
+    Column("reference_id", Integer, ForeignKey("vulnerability_references.id"), primary_key=True),
+)
+
+pattern_references = Table(
+    "pattern_references",
+    Base.metadata,
+    Column("pattern_id", Integer, ForeignKey("patterns.id"), primary_key=True),
+    Column("reference_id", Integer, ForeignKey("vulnerability_references.id"), primary_key=True),
+)
 
 class Project(Base):
     __tablename__ = "projects"
@@ -90,6 +105,7 @@ class Pattern(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     findings = relationship("Finding", back_populates="pattern")
+    references = relationship("VulnerabilityReference", secondary=pattern_references, back_populates="patterns")
 
 class Finding(Base):
     __tablename__ = "findings"
@@ -108,6 +124,7 @@ class Finding(Base):
     function = relationship("Function", back_populates="findings")
     pattern = relationship("Pattern", back_populates="findings")
     ai_analyses = relationship("AIAnalysis", back_populates="finding")
+    references = relationship("VulnerabilityReference", secondary=finding_references, back_populates="findings")
 
 class Payload(Base):
     __tablename__ = "payloads"
@@ -233,3 +250,31 @@ class Log(Base):
     timestamp = Column(DateTime, server_default=func.now())
 
     user = relationship("User", back_populates="logs")
+
+class ExternalSource(Base):
+    __tablename__ = "external_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    url = Column(String)
+    description = Column(Text)
+    type = Column(String)  # exploit_db, cve_db, poc_repo, etc.
+    created_at = Column(DateTime, server_default=func.now())
+
+    references = relationship("VulnerabilityReference", back_populates="source")
+
+class VulnerabilityReference(Base):
+    __tablename__ = "vulnerability_references"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_id = Column(Integer, ForeignKey("external_sources.id"))
+    external_id = Column(String, index=True)  # e.g., CVE-2021-1234, EDB-ID 12345
+    url = Column(String)
+    description = Column(Text)
+    severity = Column(String)
+    cvss_score = Column(Float)
+    created_at = Column(DateTime, server_default=func.now())
+
+    source = relationship("ExternalSource", back_populates="references")
+    findings = relationship("Finding", secondary=finding_references, back_populates="references")
+    patterns = relationship("Pattern", secondary=pattern_references, back_populates="references")

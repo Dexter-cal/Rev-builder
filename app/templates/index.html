@@ -59,6 +59,13 @@
             webRequests: [],
             phishingCampaigns: [],
             crackingJobs: [],
+            aiModels: [],
+            hardwareJobs: [],
+            weaponizationJobs: [],
+            emulationTraces: [],
+            compiledBinaries: [],
+            codeLabSource: '#include <stdio.h>\n\nint main() {\n    printf("Offsec Tool v1.0\\n");\n    return 0;\n}',
+            aiAnalysisResult: '',
             showCloneModal: false,
             cloningConfig: { channel: 'network', source: '' },
             consentGiven: false,
@@ -447,6 +454,102 @@
                 } catch (error) { console.error(error); }
             },
 
+            async fetchAIModels() {
+                try {
+                    const resp = await fetch('/api/settings/ai-models');
+                    this.aiModels = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async updateAIKey(modelId, key) {
+                try {
+                    await fetch(`/api/settings/ai-models/${modelId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ api_key: key })
+                    });
+                    this.addToTerminal('[+] API key updated for model #' + modelId);
+                } catch (error) { console.error(error); }
+            },
+
+            async triggerHardwareAction(interface, action) {
+                this.addToTerminal(`Running hardware ${action} on ${interface}...`);
+                try {
+                    const resp = await fetch(`/api/hardware/action?device_id=1&interface=${interface}&action=${action}`, { method: 'POST' });
+                    const data = await resp.json();
+                    this.fetchHardwareJobs();
+                } catch (error) { console.error(error); }
+            },
+
+            async fetchHardwareJobs() {
+                try {
+                    const resp = await fetch('/api/hardware/jobs/1');
+                    this.hardwareJobs = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async weaponizeFinding(findingId) {
+                this.addToTerminal(`Weaponizing finding #${findingId}...`);
+                try {
+                    await fetch(`/api/weaponization/weaponize?finding_id=${findingId}&platform=linux&exploit_type=python_script`, { method: 'POST' });
+                    this.addToTerminal('[+] Exploit weaponized and saved to module library.');
+                } catch (error) { console.error(error); }
+            },
+
+            async runEmulation(binaryId) {
+                this.addToTerminal(`Starting emulation for binary #${binaryId}...`);
+                try {
+                    const resp = await fetch(`/api/emulation/start?binary_id=${binaryId}`, { method: 'POST' });
+                    const data = await resp.json();
+                    this.emulationTraces = data.traces;
+                    this.addToTerminal('[+] Emulation trace captured.');
+                } catch (error) { console.error(error); }
+            },
+
+            async compileSource() {
+                this.addToTerminal('Compiling source code in Code Lab...');
+                try {
+                    const resp = await fetch(`/api/compiler/compile?project_id=${this.activeProject.id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.codeLabSource)
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        this.addToTerminal('[+] Compilation successful. Binary ID: ' + data.binary_id);
+                        this.fetchCompiledBinaries();
+                    } else {
+                        this.addToTerminal('[!] Compilation failed: ' + data.logs);
+                    }
+                } catch (error) { console.error(error); }
+            },
+
+            async fetchCompiledBinaries() {
+                try {
+                    const resp = await fetch(`/api/compiler/binaries/${this.activeProject.id}`);
+                    this.compiledBinaries = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async runAISmartAnalysis() {
+                this.addToTerminal('Running AI-powered smarter analysis...');
+                const modelId = this.aiModels.length > 0 ? this.aiModels[0].id : 1;
+                try {
+                    const resp = await fetch(`/api/ai-engine/analyze?model_id=${modelId}&task=security_audit`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.codeLabSource)
+                    });
+                    const data = await resp.json();
+                    if (data.response) {
+                        this.aiAnalysisResult = data.response;
+                        this.addToTerminal('[+] AI Analysis complete.');
+                    } else {
+                        this.addToTerminal('[!] AI Error: ' + data.error);
+                    }
+                } catch (error) { console.error(error); }
+            },
+
             async runFullWorkflow() {
                 if (!this.consentGiven) {
                     alert('Please provide authorization consent first.');
@@ -555,6 +658,18 @@
             <div @click="activeModule = 'phishing'; fetchPhishingCampaigns()" :class="activeModule === 'phishing' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Social Engineering">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
             </div>
+            <div @click="activeModule = 'hardware'; fetchHardwareJobs()" :class="activeModule === 'hardware' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Hardware Lab">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
+            </div>
+            <div @click="activeModule = 'code_lab'; fetchCompiledBinaries()" :class="activeModule === 'code_lab' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Code Lab (Compile/Modify)">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+            </div>
+            <div @click="activeModule = 'docs'" :class="activeModule === 'docs' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Learning & Knowledge Base">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+            </div>
+            <div @click="activeModule = 'settings'; fetchAIModels()" :class="activeModule === 'settings' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300 mt-auto" title="Settings">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </div>
         </aside>
 
         <!-- Sidebar / Explorer -->
@@ -640,7 +755,10 @@
                                     <span class="w-8 text-slate-700 text-right pr-2 select-none" x-text="item.line"></span>
                                     <span class="flex-grow" :class="item.vuln ? 'text-red-400 font-bold' : 'text-blue-300'" x-text="item.text"></span>
                                     <template x-if="item.vuln">
-                                        <button @click="tryToBreak()" class="ml-2 bg-red-600 hover:bg-red-500 text-white px-2 py-0 rounded text-[9px] font-bold">Try to break this</button>
+                                        <div class="flex space-x-1 ml-2">
+                                            <button @click="tryToBreak()" class="bg-red-600 hover:bg-red-500 text-white px-2 py-0 rounded text-[9px] font-bold">Break</button>
+                                            <button @click="weaponizeFinding(1)" class="bg-purple-600 hover:bg-purple-500 text-white px-2 py-0 rounded text-[9px] font-bold">Weaponize</button>
+                                        </div>
                                     </template>
                                 </div>
                             </template>
@@ -784,6 +902,191 @@
                             </div>
                         </template>
                         <div x-show="phishingCampaigns.length === 0" class="col-span-2 text-center p-8 text-slate-600 italic">No active campaigns. Create one to test the human perimeter.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hardware Lab View -->
+            <div x-show="activeModule === 'hardware'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-5xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-300">Hardware Lab / Signal Analysis</h2>
+                        <div class="flex space-x-2">
+                            <button @click="triggerHardwareAction('uart', 'sniff')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">Sniff UART</button>
+                            <button @click="triggerHardwareAction('jtag', 'dump')" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">JTAG Memory Dump</button>
+                            <button @click="triggerHardwareAction('sdr', 'sniff')" class="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">SDR Signal Scan</button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <template x-for="job in hardwareJobs" :key="job.id">
+                            <div class="bg-dark-900 border border-slate-800 p-4 rounded relative overflow-hidden group">
+                                <div class="absolute top-0 right-0 p-2 bg-slate-800 text-[8px] font-bold text-slate-500" x-text="job.status.toUpperCase()"></div>
+                                <h3 class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-2" x-text="job.interface"></h3>
+                                <div class="text-[10px] text-slate-500 mb-4" x-text="'Action: ' + job.action"></div>
+                                <div class="bg-black/50 p-2 rounded font-mono text-[9px] text-green-500 h-32 overflow-y-auto">
+                                    <pre x-text="JSON.stringify(job.data_captured, null, 2)"></pre>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings View -->
+            <div x-show="activeModule === 'settings'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-3xl mx-auto">
+                    <h2 class="text-xl font-bold text-slate-300 mb-8">System Settings & AI Configuration</h2>
+
+                    <div class="space-y-8">
+                        <section>
+                            <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 border-b border-slate-800 pb-2">AI Model Connectors</h3>
+                            <div class="space-y-4">
+                                <template x-for="model in aiModels" :key="model.id">
+                                    <div class="bg-dark-900 border border-slate-800 rounded-lg p-5">
+                                        <div class="flex justify-between items-start mb-4">
+                                            <div>
+                                                <h4 class="text-sm font-bold text-slate-200" x-text="model.name"></h4>
+                                                <span class="text-[10px] text-purple-400 font-mono" x-text="model.model_type"></span>
+                                            </div>
+                                            <div class="flex items-center space-x-2">
+                                                <span :class="model.enabled ? 'text-green-500' : 'text-slate-600'" class="text-[9px] font-bold uppercase" x-text="model.enabled ? 'Active' : 'Disabled'"></span>
+                                                <div @click="model.enabled = !model.enabled; updateAIKey(model.id, model.api_key)" :class="model.enabled ? 'bg-green-600' : 'bg-slate-700'" class="w-8 h-4 rounded-full relative cursor-pointer transition-colors">
+                                                    <div :class="model.enabled ? 'translate-x-4' : 'translate-x-0'" class="w-4 h-4 bg-white rounded-full shadow transition-transform"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-1 gap-4">
+                                            <div>
+                                                <label class="block text-[9px] text-slate-500 uppercase font-bold mb-1">API Key</label>
+                                                <div class="flex space-x-2">
+                                                    <input type="password" x-model="model.api_key" class="flex-grow bg-dark-950 border border-slate-700 rounded px-3 py-1.5 text-xs font-mono text-slate-300 focus:border-purple-500 outline-none">
+                                                    <button @click="updateAIKey(model.id, model.api_key)" class="bg-slate-800 hover:bg-slate-700 text-[10px] px-3 rounded font-bold uppercase tracking-tighter">Update</button>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[9px] text-slate-500 uppercase font-bold mb-1">Base URL</label>
+                                                <input type="text" x-model="model.base_url" class="w-full bg-dark-950 border border-slate-700 rounded px-3 py-1.5 text-xs font-mono text-slate-300 focus:border-purple-500 outline-none">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </section>
+
+                        <section>
+                            <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 border-b border-slate-800 pb-2">Weaponization Engine Defaults</h3>
+                            <div class="bg-dark-900 border border-slate-800 rounded-lg p-5 grid grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-[9px] text-slate-500 uppercase font-bold mb-1">Preferred Platform</label>
+                                    <select class="w-full bg-dark-950 border border-slate-700 rounded p-2 text-xs">
+                                        <option>Linux (x64)</option>
+                                        <option>Windows (x64)</option>
+                                        <option>ARM / Embedded</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[9px] text-slate-500 uppercase font-bold mb-1">Output Format</label>
+                                    <select class="w-full bg-dark-950 border border-slate-700 rounded p-2 text-xs">
+                                        <option>Python PoC</option>
+                                        <option>Metasploit Module</option>
+                                        <option>C Binary Source</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Code Lab View -->
+            <div x-show="activeModule === 'code_lab'" class="flex-grow flex flex-col overflow-hidden">
+                <div class="h-10 bg-dark-900 border-b border-slate-800 flex items-center justify-between px-4">
+                    <div class="flex items-center space-x-4">
+                        <h2 class="text-sm font-bold text-slate-300">Code Lab</h2>
+                        <div class="h-4 w-px bg-slate-800"></div>
+                        <span class="text-[10px] text-slate-500 uppercase">C / C++ Compiler & Weaponizer</span>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button @click="compileSource()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Compile</button>
+                        <button @click="runAISmartAnalysis()" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase tracking-wider">AI Audit</button>
+                    </div>
+                </div>
+                <div class="flex-grow grid grid-cols-2 overflow-hidden bg-slate-900 gap-px">
+                    <div class="bg-dark-950 flex flex-col">
+                        <div class="p-2 text-[9px] font-bold text-slate-500 uppercase bg-dark-900 flex justify-between items-center">
+                            <span>Source Editor</span>
+                            <span class="text-blue-400">main.c</span>
+                        </div>
+                        <textarea x-model="codeLabSource" class="flex-grow bg-dark-950 p-4 font-mono text-xs text-blue-300 outline-none resize-none"></textarea>
+                    </div>
+                    <div class="bg-dark-950 flex flex-col">
+                        <div class="p-2 text-[9px] font-bold text-slate-500 uppercase bg-dark-900">Analysis / Output</div>
+                        <div class="flex-grow p-4 font-mono text-xs overflow-y-auto">
+                            <div x-show="aiAnalysisResult" class="mb-6">
+                                <div class="text-purple-400 font-bold mb-2">AI Insights:</div>
+                                <div class="text-slate-300 whitespace-pre-wrap leading-relaxed" x-text="aiAnalysisResult"></div>
+                            </div>
+                            <div class="text-slate-500 border-t border-slate-800 pt-4">
+                                <div class="font-bold mb-2">Compiled Artifacts:</div>
+                                <template x-for="bin in compiledBinaries" :key="bin.id">
+                                    <div class="flex justify-between items-center bg-dark-900 p-2 rounded mb-1">
+                                        <span class="text-[10px] text-green-500" x-text="bin.path.split('/').pop()"></span>
+                                        <span class="text-[8px] text-slate-600" x-text="bin.size + ' bytes'"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Documentation / Learning View -->
+            <div x-show="activeModule === 'docs'" class="flex-grow p-8 overflow-y-auto">
+                <div class="max-w-4xl mx-auto">
+                    <h2 class="text-2xl font-bold text-slate-200 mb-8">Learning & Knowledge Base</h2>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div class="bg-dark-900 border border-slate-800 p-6 rounded-xl">
+                            <h3 class="text-lg font-bold text-blue-400 mb-4">Vulnerability Research</h3>
+                            <div class="space-y-3">
+                                <div class="p-3 bg-dark-950 rounded border border-slate-800 hover:border-blue-500 cursor-pointer transition-colors">
+                                    <h4 class="text-sm font-bold text-slate-300">Buffer Overflow Fundamentals</h4>
+                                    <p class="text-[11px] text-slate-500 mt-1">Understanding stack layout, return addresses, and shellcode injection.</p>
+                                </div>
+                                <div class="p-3 bg-dark-950 rounded border border-slate-800 hover:border-blue-500 cursor-pointer transition-colors">
+                                    <h4 class="text-sm font-bold text-slate-300">ROP Chain Construction</h4>
+                                    <p class="text-[11px] text-slate-500 mt-1">Bypassing NX/DEP by chaining existing code gadgets.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-dark-900 border border-slate-800 p-6 rounded-xl">
+                            <h3 class="text-lg font-bold text-purple-400 mb-4">Tool Documentation</h3>
+                            <div class="space-y-3">
+                                <div class="p-3 bg-dark-950 rounded border border-slate-800">
+                                    <h4 class="text-sm font-bold text-slate-300">Advanced Console Usage</h4>
+                                    <p class="text-[11px] text-slate-500 mt-1">Mastering the interactive exploit console for multi-stage attacks.</p>
+                                </div>
+                                <div class="p-3 bg-dark-950 rounded border border-slate-800">
+                                    <h4 class="text-sm font-bold text-slate-300">AI-Assisted Analysis</h4>
+                                    <p class="text-[11px] text-slate-500 mt-1">How to leverage Gemini-1.5-Pro for automated code auditing.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-8 bg-dark-900 border border-slate-800 p-6 rounded-xl">
+                        <h3 class="text-lg font-bold text-green-400 mb-4">Saved Code Snippets</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-black p-3 rounded font-mono text-[10px] border border-slate-800">
+                                <div class="text-slate-500 mb-2">// XOR Encoder Stub</div>
+                                <div class="text-green-500">for(int i=0; i<len; i++) data[i] ^= key;</div>
+                            </div>
+                            <div class="bg-black p-3 rounded font-mono text-[10px] border border-slate-800">
+                                <div class="text-slate-500 mb-2"># Python Reverse Shell</div>
+                                <div class="text-blue-400">s=socket.socket();s.connect((ip,port))...</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

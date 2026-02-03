@@ -261,10 +261,12 @@ class AIModel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
+    model_type = Column(String) # LLM, Embedding, CodeGen
     api_key = Column(String)
     base_url = Column(String)
     enabled = Column(Boolean, default=True)
-    profile_config = Column(JSON) # e.g., {"temperature": 0.7, "mode": "detailed"}
+    profile_config = Column(JSON) # e.g., {"temperature": 0.7, "top_p": 0.9}
+    custom_args = Column(JSON) # e.g., {"max_tokens": 2048}
     notes = Column(Text)
 
     ai_analyses = relationship("AIAnalysis", back_populates="ai_model")
@@ -424,6 +426,82 @@ class CrackingJob(Base):
     status = Column(String)
     results = Column(JSON) # List of cracked passwords
     created_at = Column(DateTime, server_default=func.now())
+
+class CompilerJob(Base):
+    __tablename__ = "compiler_jobs"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    type = Column(String) # compile, decompile, modify
+    source_code = Column(Text)
+    output_binary_id = Column(Integer, ForeignKey("binaries.id"), nullable=True)
+    status = Column(String)
+    logs = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+
+class WeaponizationJob(Base):
+    __tablename__ = "weaponization_jobs"
+    id = Column(Integer, primary_key=True)
+    finding_id = Column(Integer, ForeignKey("findings.id"))
+    target_platform = Column(String) # linux, windows, embedded
+    exploit_type = Column(String) # metasploit_module, python_script, c_source
+    code = Column(Text)
+    status = Column(String)
+    created_at = Column(DateTime, server_default=func.now())
+
+class EmulationJob(Base):
+    __tablename__ = "emulation_jobs"
+    id = Column(Integer, primary_key=True)
+    binary_id = Column(Integer, ForeignKey("binaries.id"))
+    engine = Column(String) # qemu, unicorn, bochs
+    status = Column(String)
+    traces = Column(JSON)
+    created_at = Column(DateTime, server_default=func.now())
+
+class HardwareJob(Base):
+    __tablename__ = "hardware_jobs"
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id"))
+    interface = Column(String) # jtag, swd, uart, spi, i2c, sdr
+    action = Column(String) # sniff, dump, fuzz, glitch
+    data_captured = Column(JSON)
+    status = Column(String)
+    created_at = Column(DateTime, server_default=func.now())
+
+class SystemConfig(Base):
+    __tablename__ = "system_configs"
+    id = Column(Integer, primary_key=True)
+    key = Column(String, unique=True)
+    value = Column(JSON)
+    description = Column(Text)
+
+class ExploitWeapon(Base):
+    __tablename__ = "exploit_weapons"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    name = Column(String)
+    code = Column(Text)
+    language = Column(String) # python, c, bash
+    target_arch = Column(String)
+    compiled_binary_path = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class CodeSnippet(Base):
+    __tablename__ = "code_snippets"
+    id = Column(Integer, primary_key=True)
+    title = Column(String)
+    content = Column(Text)
+    language = Column(String)
+    tags = Column(JSON) # e.g., ["buffer_overflow", "tutorial"]
+    category = Column(String) # Learning, Template, Exploit
+    created_at = Column(DateTime, server_default=func.now())
+
+class KnowledgeBase(Base):
+    __tablename__ = "knowledge_base"
+    id = Column(Integer, primary_key=True)
+    topic = Column(String)
+    content = Column(Text)
+    references = Column(JSON)
+    last_updated = Column(DateTime, server_default=func.now())
 
 class Credential(Base):
     __tablename__ = "credentials"

@@ -65,6 +65,30 @@ def setup():
     )
 
     db.add(v1)
+
+    # AI Models
+    ai1 = models.AIModel(
+        name="Gemini-1.5-Pro",
+        model_type="LLM",
+        api_key="sk-...",
+        base_url="https://generativelanguage.googleapis.com",
+        profile_config={"temperature": 0.7, "top_p": 0.9},
+        enabled=True
+    )
+    ai2 = models.AIModel(
+        name="GPT-4o",
+        model_type="LLM",
+        api_key="sk-...",
+        base_url="https://api.openai.com/v1",
+        profile_config={"temperature": 0.5},
+        enabled=False
+    )
+
+    for ai in [ai1, ai2]:
+        existing = db.query(models.AIModel).filter(models.AIModel.name == ai.name).first()
+        if not existing:
+            db.add(ai)
+
     db.commit()
     db.close()
 

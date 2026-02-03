@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from app.api import projects, devices, analysis, payloads, recon, credentials, reports, exploit_db, exploit_chains, diffing, assets, firmware, source, console, fuzzing, bruteforce, cloning, web_testing, phishing, cracking
+from app.api import projects, devices, analysis, payloads, recon, credentials, reports, exploit_db, exploit_chains, diffing, assets, firmware, source, console, fuzzing, bruteforce, cloning, web_testing, phishing, cracking, weaponization, emulation, hardware, settings, compiler, ai_engine
 import os
 
 app = FastAPI(title="Offensive Security Platform")
@@ -35,6 +35,12 @@ app.include_router(cloning.router, prefix="/api/cloning", tags=["cloning"])
 app.include_router(web_testing.router, prefix="/api/web-testing", tags=["web-testing"])
 app.include_router(phishing.router, prefix="/api/phishing", tags=["phishing"])
 app.include_router(cracking.router, prefix="/api/cracking", tags=["cracking"])
+app.include_router(weaponization.router, prefix="/api/weaponization", tags=["weaponization"])
+app.include_router(emulation.router, prefix="/api/emulation", tags=["emulation"])
+app.include_router(hardware.router, prefix="/api/hardware", tags=["hardware"])
+app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(compiler.router, prefix="/api/compiler", tags=["compiler"])
+app.include_router(ai_engine.router, prefix="/api/ai-engine", tags=["ai-engine"])
 
 @app.get("/")
 async def read_index(request: Request):

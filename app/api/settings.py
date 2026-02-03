@@ -27,3 +27,24 @@ def get_all_configs(db: Session = Depends(get_db)):
 def set_config(key: str, value: dict, description: str = "", db: Session = Depends(get_db)):
     service = SettingsService(db)
     return service.set_system_config(key, value, description)
+
+@router.get("/packages")
+def list_packages():
+    import subprocess
+    import sys
+    try:
+        result = subprocess.run([sys.executable, "-m", "pip", "list", "--format=json"], capture_output=True, text=True)
+        import json
+        return json.loads(result.stdout)
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.post("/packages/install")
+def install_package(package: str):
+    import subprocess
+    import sys
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+        return {"message": f"Successfully installed {package}"}
+    except Exception as e:
+        return {"error": str(e)}

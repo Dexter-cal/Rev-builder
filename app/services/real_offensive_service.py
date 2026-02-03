@@ -44,9 +44,52 @@ class CompilerService:
             db.add(binary)
             db.commit()
 
-            return {"success": True, "binary_id": binary.id, "logs": result.stdout}
+            return {"success": True, "binary_id": binary.id, "logs": result.stdout, "binary_path": output_path}
         except subprocess.CalledProcessError as e:
             return {"success": False, "logs": e.stderr}
+
+class ExecutionService:
+    @staticmethod
+    def run_python(code: str):
+        try:
+            # For a prototype, we run it in a subprocess
+            # In production, we'd use a restricted sandbox
+            result = subprocess.run(
+                ["python3", "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            return {
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "exit_code": result.returncode
+            }
+        except subprocess.TimeoutExpired:
+            return {"error": "Execution timed out"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    @staticmethod
+    def run_binary(path: str):
+        if not os.path.exists(path):
+            return {"error": "Binary not found"}
+        try:
+            result = subprocess.run(
+                [path],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            return {
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "exit_code": result.returncode
+            }
+        except subprocess.TimeoutExpired:
+            return {"error": "Execution timed out"}
+        except Exception as e:
+            return {"error": str(e)}
 
 class WeaponizerService:
     @staticmethod

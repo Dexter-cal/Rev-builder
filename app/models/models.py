@@ -88,6 +88,7 @@ class Binary(Base):
     arch = Column(String)  # x86, ARM, etc.
     file_type = Column(String)  # ELF, PE, Mach-O, DEX, firmware
     size = Column(Integer)
+    protections = Column(JSON) # e.g., {"NX": True, "ASLR": True, "Canary": False}
     created_at = Column(DateTime, server_default=func.now())
     notes = Column(Text)
 

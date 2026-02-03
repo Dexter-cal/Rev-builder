@@ -27,7 +27,13 @@ The platform uses a central SQLite database with the following tables:
 ### Prerequisites
 
 - Python 3.12+
-- SQLAlchemy
+- Dependencies listed in `requirements.txt`
+
+### Installation
+
+```bash
+pip install -r requirements.txt
+```
 
 ### Database Initialization
 
@@ -37,10 +43,41 @@ To initialize the database and create all tables:
 python3 init_db.py
 ```
 
-This will create an `app.db` file in the project root.
+This will create an `app.db` file in the project root and seed external vulnerability sources.
+
+### Running the Platform
+
+To start the web interface:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Then visit `http://localhost:8000`.
+
+### CLI Usage
+
+The platform also includes a CLI for project and device management:
+
+```bash
+# List projects
+PYTHONPATH=. ./cli.py projects list
+
+# Create a new project
+PYTHONPATH=. ./cli.py projects create "My Pentest"
+
+# Analyze a binary
+PYTHONPATH=. ./cli.py analyze binary /path/to/binary
+```
 
 ## Project Structure
 
+- `app/api/`: REST API endpoints.
+- `app/cli/`: Command-line interface logic.
 - `app/database/`: Database configuration and session management.
 - `app/models/`: SQLAlchemy models defining the schema.
-- `init_db.py`: Database initialization script.
+- `app/schemas/`: Pydantic schemas for data validation.
+- `app/templates/`: UI templates (HTML/Tailwind/Alpine.js).
+- `init_db.py`: Database initialization and seeding script.
+- `cli.py`: CLI entry point.
+- `docs/`: Documentation and wireframes.

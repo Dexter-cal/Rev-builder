@@ -1,0 +1,9 @@
+sqlalchemy
+fastapi
+uvicorn
+jinja2
+click
+tabulate
+pydantic
+pytest
+playwright

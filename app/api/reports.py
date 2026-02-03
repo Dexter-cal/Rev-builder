@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.database.session import get_db
+from app.services.asset_service import AssetService
 from app.models import models
 import os
 from reportlab.lib.pagesizes import letter
@@ -15,10 +16,8 @@ def generate_report(project_id: int, db: Session = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    reports_dir = "generated_reports"
-    os.makedirs(reports_dir, exist_ok=True)
     report_filename = f"report_{project.id}_{os.urandom(4).hex()}.pdf"
-    report_path = os.path.join(reports_dir, report_filename)
+    report_path = AssetService.get_asset_path(project_id, "reports", report_filename)
 
     # Gather data
     devices = db.query(models.Device).filter(models.Device.project_id == project_id).all()

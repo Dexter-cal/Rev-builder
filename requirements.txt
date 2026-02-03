@@ -7,3 +7,9 @@ tabulate
 pydantic
 pytest
 playwright
+python-nmap
+pyelftools
+capstone
+reportlab
+requests
+python-multipart

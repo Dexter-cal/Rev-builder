@@ -268,6 +268,31 @@ class AIModel(Base):
 
     ai_analyses = relationship("AIAnalysis", back_populates="ai_model")
 
+class VulnerabilityMap(Base):
+    __tablename__ = "vulnerability_map"
+    id = Column(Integer, primary_key=True)
+    software_name = Column(String, index=True)
+    version_range = Column(String)
+    cve_id = Column(String, index=True)
+    description = Column(Text)
+    exploit_module_id = Column(Integer, ForeignKey("exploit_modules.id"), nullable=True)
+
+    exploit_module = relationship("ExploitModule", back_populates="vuln_mappings")
+
+class ExploitModule(Base):
+    __tablename__ = "exploit_modules"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, index=True) # e.g., "linux/http/apache_struts_rce"
+    description = Column(Text)
+    author = Column(String)
+    platform = Column(String) # linux, windows, ios, etc.
+    arch = Column(JSON) # ["x86", "arm"]
+    options = Column(JSON) # {"RHOST": {"required": True, "desc": "Target IP"}, ...}
+    payload_type = Column(String) # cmd, meterpreter, reverse_tcp
+    script_path = Column(String) # path to actual python script
+
+    vuln_mappings = relationship("VulnerabilityMap", back_populates="exploit_module")
+
 class AIAnalysis(Base):
     __tablename__ = "ai_analysis"
 

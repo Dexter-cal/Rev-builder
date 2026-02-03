@@ -37,13 +37,20 @@ pip install -r requirements.txt
 
 ### Database Initialization
 
-To initialize the database and create all tables:
+To initialize the database and create all tables, run the following scripts:
 
 ```bash
+# Initialize schema and seed basic patterns
 python3 init_db.py
+
+# Seed advanced exploit modules and vulnerability mappings
+python3 seed_advanced.py
+
+# Seed payload templates for the Payload Manager
+python3 seed_payloads.py
 ```
 
-This will create an `app.db` file in the project root and seed external vulnerability sources.
+These scripts will create an `app.db` file in the project root and populate it with initial data required for testing and operations.
 
 ### Running the Platform
 

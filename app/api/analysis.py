@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.services.analysis_service import AnalysisService
+from app.services.asset_service import AssetService
 from app.models import models
 import hashlib
 import os
@@ -55,16 +56,11 @@ async def upload_binary(
     db.commit()
     db.refresh(binary)
 
-    # Save file and analyze if ELF
-    temp_dir = "temp_uploads"
-    os.makedirs(temp_dir, exist_ok=True)
-    temp_path = os.path.join(temp_dir, f"{binary.id}_{file.filename}")
-
-    with open(temp_path, "wb") as buffer:
-        buffer.write(content)
+    # Save file to project assets and analyze if ELF
+    binary_path = AssetService.save_asset(project_id, "binaries", file.filename, content)
 
     if "ELF" in file_type:
-        AnalysisService.analyze_elf(db, binary.id, temp_path)
+        AnalysisService.analyze_elf(db, binary.id, binary_path)
     else:
         # Fallback to simulation for non-ELF
         functions_data = [

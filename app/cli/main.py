@@ -1,7 +1,9 @@
 import click
 from app.database.session import SessionLocal
 from app.models import models
-from tabulate import tabulate # I should probably install this for nice tables
+from app.services.analysis_service import AnalysisService
+from app.services.exploit_service import ExploitService
+from tabulate import tabulate
 
 def get_db():
     return SessionLocal()
@@ -55,18 +57,67 @@ def list_devices(project_id):
     click.echo(tabulate(data, headers=["ID", "Name", "IP", "Type"]))
     db.close()
 
+@devices.command(name="create")
+@click.argument("project-id", type=int)
+@click.argument("name")
+@click.option("--ip", help="IP address")
+def create_device(project_id, name, ip):
+    """Create a new device"""
+    db = get_db()
+    device = models.Device(project_id=project_id, name=name, ip=ip, type="server")
+    db.add(device)
+    db.commit()
+    click.echo(f"Device '{name}' created with ID {device.id}")
+    db.close()
+
 @cli.group()
 def analyze():
     """Binary analysis commands"""
     pass
 
 @analyze.command(name="binary")
+@click.argument("device-id", type=int)
 @click.argument("path")
-def analyze_binary(path):
-    """Scan a binary for vulnerabilities (Simulation)"""
-    click.echo(f"Analyzing binary at {path}...")
-    # In a real app, this would call analysis logic
-    click.echo(click.style("CRITICAL: unsafe gets() detected at 0x401240", fg="red", bold=True))
+def analyze_binary(device_id, path):
+    """Ingest and scan a binary for vulnerabilities"""
+    db = get_db()
+    click.echo(f"Ingesting binary from device {device_id} at {path}...")
+    binary = AnalysisService.simulate_binary_ingestion(db, device_id, path)
+    click.echo(f"Binary ingested with ID {binary.id}. Discovered {len(binary.functions)} functions.")
+
+    click.echo("Scanning for vulnerability patterns...")
+    findings_count = AnalysisService.scan_binary(db, binary.id)
+
+    if findings_count > 0:
+        click.echo(click.style(f"SUCCESS: Found {findings_count} vulnerabilities!", fg="red", bold=True))
+        # List findings
+        findings = db.query(models.Finding).join(models.Function).filter(models.Function.binary_id == binary.id).all()
+        data = [[f.id, f.function.name, f.severity, f.confidence] for f in findings]
+        click.echo(tabulate(data, headers=["ID", "Function", "Severity", "Confidence"]))
+    else:
+        click.echo("No vulnerabilities found.")
+    db.close()
+
+@cli.group()
+def exploit():
+    """Exploitation commands"""
+    pass
+
+@exploit.command(name="generate")
+@click.argument("finding-id", type=int)
+@click.option("--name", "-n", default="exploit_v1", help="Payload name")
+def generate_exploit(finding_id, name):
+    """Generate a payload for a specific finding"""
+    db = get_db()
+    click.echo(f"Generating payload for finding {finding_id}...")
+    payload = ExploitService.generate_payload(db, finding_id, name)
+    if payload:
+        click.echo(click.style(f"Payload generated: {payload.name} (ID: {payload.id})", fg="green"))
+        click.echo("Base code:")
+        click.echo(payload.base_code)
+    else:
+        click.echo(click.style("Error: Finding not found", fg="red"))
+    db.close()
 
 if __name__ == "__main__":
     cli()

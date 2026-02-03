@@ -22,3 +22,14 @@ def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_device)
     return db_device
+
+@router.get("/{device_id}", response_model=schemas.Device)
+def read_device(device_id: int, db: Session = Depends(get_db)):
+    device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
+
+@router.get("/{device_id}/sessions")
+def read_device_sessions(device_id: int, db: Session = Depends(get_db)):
+    return db.query(models.Session).filter(models.Session.device_id == device_id).all()

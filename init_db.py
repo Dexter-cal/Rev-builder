@@ -1,7 +1,7 @@
 from app.database.base import Base
 from app.database.session import engine, SessionLocal
 from app.models.models import ExternalSource
-import app.models
+from app.models import models
 
 def seed_data(db):
     sources = [
@@ -59,6 +59,64 @@ def seed_data(db):
     db.commit()
     print("Seeded external sources.")
 
+def seed_patterns(db):
+    patterns = [
+        {
+            "name": "Unsafe gets() usage",
+            "language": "asm",
+            "pattern": "call gets",
+            "description": "The gets() function does not check for buffer length and is highly vulnerable to stack-based buffer overflows.",
+            "severity": "critical",
+            "confidence_base": 0.9,
+            "arch": ["x86", "x86_64", "arm"],
+            "tags": ["buffer_overflow", "rce"]
+        },
+        {
+            "name": "Unsafe scanf() with %s",
+            "language": "asm",
+            "pattern": "call scanf",
+            "description": "Using scanf with %s without width limits can lead to buffer overflows.",
+            "severity": "high",
+            "confidence_base": 0.7,
+            "arch": ["x86", "x86_64"],
+            "tags": ["buffer_overflow"]
+        }
+    ]
+
+    for pattern_data in patterns:
+        pattern = db.query(models.Pattern).filter(models.Pattern.name == pattern_data["name"]).first()
+        if not pattern:
+            pattern = models.Pattern(**pattern_data)
+            db.add(pattern)
+
+    db.commit()
+    print("Seeded vulnerability patterns.")
+
+def seed_templates_and_tags(db):
+    # Seed Project Templates
+    templates = [
+        {"name": "Router Audit", "description": "Focused on firmware analysis and network services of embedded routers."},
+        {"name": "IoT Camera Lab", "description": "Security evaluation of IP cameras, including ONVIF and web interfaces."},
+        {"name": "Server Hardening", "description": "Audit of Linux/Windows server configurations and exposed binaries."}
+    ]
+    for t_data in templates:
+        if not db.query(models.ProjectTemplate).filter(models.ProjectTemplate.name == t_data["name"]).first():
+            db.add(models.ProjectTemplate(**t_data))
+
+    # Seed Tags
+    tags = [
+        {"name": "critical", "color": "#ef4444"},
+        {"name": "lab-only", "color": "#3b82f6"},
+        {"name": "needs-review", "color": "#f59e0b"},
+        {"name": "dangerous", "color": "#7c3aed"}
+    ]
+    for tag_data in tags:
+        if not db.query(models.Tag).filter(models.Tag.name == tag_data["name"]).first():
+            db.add(models.Tag(**tag_data))
+
+    db.commit()
+    print("Seeded project templates and tags.")
+
 def init_db():
     print("Initializing the database...")
     Base.metadata.create_all(bind=engine)
@@ -66,6 +124,8 @@ def init_db():
     db = SessionLocal()
     try:
         seed_data(db)
+        seed_patterns(db)
+        seed_templates_and_tags(db)
     finally:
         db.close()
 

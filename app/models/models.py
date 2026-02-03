@@ -18,6 +18,20 @@ pattern_references = Table(
     Column("reference_id", Integer, ForeignKey("vulnerability_references.id"), primary_key=True),
 )
 
+device_tags = Table(
+    "device_tags",
+    Base.metadata,
+    Column("device_id", Integer, ForeignKey("devices.id"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True),
+)
+
+function_tags = Table(
+    "function_tags",
+    Base.metadata,
+    Column("function_id", Integer, ForeignKey("functions.id"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True),
+)
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -32,6 +46,14 @@ class Project(Base):
 
     devices = relationship("Device", back_populates="project")
     reports = relationship("Report", back_populates="project")
+    attack_surfaces = relationship("AttackSurface", back_populates="project")
+
+class ProjectTemplate(Base):
+    __tablename__ = "project_templates"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    description = Column(Text)
+    config = Column(JSON)  # Default targets, tools, etc.
 
 class Device(Base):
     __tablename__ = "devices"
@@ -53,6 +75,8 @@ class Device(Base):
     sessions = relationship("Session", back_populates="device")
     payloads = relationship("Payload", back_populates="target_device")
     exploit_chains = relationship("ExploitChain", back_populates="target_device")
+    tags = relationship("Tag", secondary=device_tags, back_populates="devices")
+    credentials = relationship("Credential", back_populates="device")
 
 class Binary(Base):
     __tablename__ = "binaries"
@@ -69,6 +93,14 @@ class Binary(Base):
 
     device = relationship("Device", back_populates="binaries")
     functions = relationship("Function", back_populates="binary")
+
+class FirmwareDiff(Base):
+    __tablename__ = "firmware_diffs"
+    id = Column(Integer, primary_key=True)
+    binary_a_id = Column(Integer, ForeignKey("binaries.id"))
+    binary_b_id = Column(Integer, ForeignKey("binaries.id"))
+    diff_data = Column(JSON)
+    created_at = Column(DateTime, server_default=func.now())
 
 class Function(Base):
     __tablename__ = "functions"
@@ -89,6 +121,16 @@ class Function(Base):
     payloads = relationship("Payload", back_populates="target_function")
     exploit_chains = relationship("ExploitChain", back_populates="target_function")
     ai_analyses = relationship("AIAnalysis", back_populates="function")
+    tags = relationship("Tag", secondary=function_tags, back_populates="functions")
+
+class Tag(Base):
+    __tablename__ = "tags"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True)
+    color = Column(String)  # CSS color or hex
+
+    devices = relationship("Device", secondary=device_tags, back_populates="tags")
+    functions = relationship("Function", secondary=function_tags, back_populates="tags")
 
 class Pattern(Base):
     __tablename__ = "patterns"
@@ -118,6 +160,7 @@ class Finding(Base):
     evidence = Column(Text)
     recommendation = Column(Text)
     ai_analysis = Column(JSON)
+    risk_score = Column(Integer)  # Composite score 0-100
     created_at = Column(DateTime, server_default=func.now())
     resolved = Column(Boolean, default=False)
 
@@ -125,6 +168,7 @@ class Finding(Base):
     pattern = relationship("Pattern", back_populates="findings")
     ai_analyses = relationship("AIAnalysis", back_populates="finding")
     references = relationship("VulnerabilityReference", secondary=finding_references, back_populates="findings")
+    evidence_files = relationship("Evidence", back_populates="finding")
 
 class Payload(Base):
     __tablename__ = "payloads"
@@ -138,6 +182,7 @@ class Payload(Base):
     target_device_id = Column(Integer, ForeignKey("devices.id"), nullable=True)
     result = Column(String)
     notes = Column(Text)
+    is_template = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
 
     target_function = relationship("Function", back_populates="payloads")
@@ -184,6 +229,18 @@ class Session(Base):
     notes = Column(Text)
 
     device = relationship("Device", back_populates="sessions")
+    snapshots = relationship("SessionSnapshot", back_populates="session")
+
+class SessionSnapshot(Base):
+    __tablename__ = "session_snapshots"
+    id = Column(Integer, primary_key=True)
+    session_id = Column(Integer, ForeignKey("sessions.id"))
+    timestamp = Column(DateTime, server_default=func.now())
+    process_list = Column(JSON)
+    network_connections = Column(JSON)
+    filesystem_delta = Column(JSON)
+
+    session = relationship("Session", back_populates="snapshots")
 
 class Report(Base):
     __tablename__ = "reports"
@@ -203,9 +260,10 @@ class AIModel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
-    api_key = Column(String)  # Should be encrypted in a real app
+    api_key = Column(String)
     base_url = Column(String)
     enabled = Column(Boolean, default=True)
+    profile_config = Column(JSON) # e.g., {"temperature": 0.7, "mode": "detailed"}
     notes = Column(Text)
 
     ai_analyses = relationship("AIAnalysis", back_populates="ai_model")
@@ -221,6 +279,7 @@ class AIAnalysis(Base):
     prompt = Column(Text)
     response = Column(Text)
     confidence = Column(Float)
+    accepted = Column(Boolean, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     finding = relationship("Finding", back_populates="ai_analyses")
@@ -251,6 +310,53 @@ class Log(Base):
 
     user = relationship("User", back_populates="logs")
 
+class Credential(Base):
+    __tablename__ = "credentials"
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id"))
+    username = Column(String)
+    password = Column(String)
+    type = Column(String)  # ssh, web, hash, private_key
+    origin = Column(String)  # how it was found
+
+    device = relationship("Device", back_populates="credentials")
+
+class AttackSurface(Base):
+    __tablename__ = "attack_surfaces"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    ip = Column(String)
+    port = Column(Integer)
+    protocol = Column(String)
+    service = Column(String)
+    version = Column(String)
+    vuln_info = Column(Text)
+
+    project = relationship("Project", back_populates="attack_surfaces")
+
+class Evidence(Base):
+    __tablename__ = "evidence"
+    id = Column(Integer, primary_key=True)
+    finding_id = Column(Integer, ForeignKey("findings.id"))
+    file_path = Column(String)
+    description = Column(Text)
+    type = Column(String)  # screenshot, log, pcap
+
+    finding = relationship("Finding", back_populates="evidence_files")
+
+class NetworkNode(Base):
+    __tablename__ = "network_nodes"
+    id = Column(Integer, primary_key=True)
+    label = Column(String)
+    type = Column(String)  # router, pc, server, iot
+
+class NetworkEdge(Base):
+    __tablename__ = "network_edges"
+    id = Column(Integer, primary_key=True)
+    source_node_id = Column(Integer, ForeignKey("network_nodes.id"))
+    target_node_id = Column(Integer, ForeignKey("network_nodes.id"))
+    type = Column(String)  # ethernet, wifi, vpn
+
 class ExternalSource(Base):
     __tablename__ = "external_sources"
 
@@ -268,7 +374,7 @@ class VulnerabilityReference(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     source_id = Column(Integer, ForeignKey("external_sources.id"))
-    external_id = Column(String, index=True)  # e.g., CVE-2021-1234, EDB-ID 12345
+    external_id = Column(String, index=True)
     url = Column(String)
     description = Column(Text)
     severity = Column(String)

@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offensive Security Platform</title>
+    <title>Offsec Platform - Security IDE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <link rel="stylesheet" href="/static/style.css">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -14,226 +13,703 @@
                 extend: {
                     colors: {
                         dark: {
+                            700: '#334155',
                             800: '#1e293b',
                             900: '#0f172a',
+                            950: '#020617',
                         }
                     }
                 }
             }
         }
     </script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .code-pane { height: calc(100% - 30px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: #475569 transparent; }
+        .terminal { height: 180px; overflow-y: auto; font-family: 'Fira Code', 'Courier New', monospace; }
+        .minimap { width: 40px; border-left: 1px solid #334155; }
+        .minimap-mark { height: 2px; width: 100%; margin-bottom: 1px; }
+        .tab-active { border-top: 2px solid #ef4444; background-color: #1e293b; }
+    </style>
 </head>
-<body class="bg-dark-900 text-slate-200 h-screen overflow-hidden flex" x-data="{ activeModule: 'dashboard', activeProject: null, activeDevice: null }">
+<body class="bg-dark-950 text-slate-300 h-screen overflow-hidden flex flex-col" x-data="{
+    activeModule: 'dashboard',
+    activeProject: { id: 1, name: 'Eagle Eye' },
+    isDragging: false,
+    focusMode: false,
+    terminalOutput: [],
+    openTabs: ['router_firmware.bin', 'Network Map'],
+    activeTab: 'router_firmware.bin',
+    sessions: [],
+    reports: [],
+    payloads: [],
+    exploitChains: [],
+    reconResults: [],
+    credentials: [],
+    consentGiven: false,
+    selectedModel: 'Gemini-1.5-Pro',
+    explorer: [
+        { name: 'bin', type: 'folder', open: true, children: [
+            { name: 'busybox', type: 'file', vuln: true },
+            { name: 'httpd', type: 'file', vuln: true }
+        ]},
+        { name: 'firmware', type: 'folder', open: false, children: [] },
+        { name: 'exploit_poc.py', type: 'file', vuln: false }
+    ],
+    analysisData: {
+        python: [
+            { line: 1, text: 'def handle_request(req):', vuln: false },
+            { line: 2, text: '    # Parse headers', vuln: false },
+            { line: 3, text: '    path = req.get_path()', vuln: false },
+            { line: 4, text: '    buffer = bytearray(256)', vuln: false },
+            { line: 5, text: '    # CRITICAL: No length check on path', vuln: true },
+            { line: 6, text: '    strcpy(buffer, path)', vuln: true },
+            { line: 7, text: '    return send_file(buffer)', vuln: false },
+            { line: 8, text: '', vuln: false },
+            { line: 9, text: 'def main():', vuln: false },
+            { line: 10, text: '    while True:', vuln: false },
+            { line: 11, text: '        req = listen()', vuln: false },
+            { line: 12, text: '        handle_request(req)', vuln: false }
+        ],
+        asm: [
+            { addr: '0x401200', text: 'push rbp', vuln: false },
+            { addr: '0x401201', text: 'mov rbp, rsp', vuln: false },
+            { addr: '0x401204', text: 'sub rsp, 0x110', vuln: false },
+            { addr: '0x40120b', text: 'lea rdi, [rbp-0x100]', vuln: true },
+            { addr: '0x401212', text: 'mov rsi, rdx', vuln: true },
+            { addr: '0x401215', text: 'call strcpy', vuln: true },
+            { addr: '0x40121a', text: 'leave', vuln: false },
+            { addr: '0x40121b', text: 'ret', vuln: false }
+        ]
+    },
 
-    <!-- Left Sidebar -->
-    <aside class="w-64 sidebar border-r border-slate-700 flex flex-col">
-        <div class="p-4 border-b border-slate-700">
-            <h1 class="text-xl font-bold text-red-500">OFFSEC PLATFORM</h1>
-        </div>
+    addToTerminal(msg) {
+        this.terminalOutput.push({ time: new Date().toLocaleTimeString(), text: msg });
+        this.$nextTick(() => {
+            const term = document.getElementById('terminal-view');
+            if (term) term.scrollTop = term.scrollHeight;
+        });
+    },
 
-        <!-- Projects Section -->
-        <div class="p-4 border-b border-slate-700">
-            <div class="flex justify-between items-center mb-2">
-                <h2 class="text-sm font-semibold uppercase text-slate-400">Projects</h2>
-                <button class="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded">New</button>
+    async handleFileUpload(files) {
+        if (!files || files.length === 0) return;
+        const file = files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('project_id', this.activeProject ? this.activeProject.id : 1);
+
+        try {
+            const response = await fetch('/api/analysis/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+
+            if (result.functions && result.functions.length > 0) {
+                const f = result.functions[0];
+                this.analysisData.python = f.python_like.split('\n').map((t, i) => ({
+                    line: i + 1,
+                    text: t,
+                    vuln: t.includes('DANGER') || t.includes('gets') || t.includes('strcpy')
+                }));
+                this.analysisData.asm = f.assembly_snippet.split('\n').map(t => {
+                    const parts = t.split(': ');
+                    return {
+                        addr: parts[0],
+                        text: parts[1] || t,
+                        vuln: t.includes('gets') || t.includes('scanf') || t.includes('strcpy')
+                    };
+                });
+                this.activeTab = f.name;
+            }
+
+            this.activeModule = 'binary';
+            this.addToTerminal('Loaded binary: ' + file.name);
+            this.addToTerminal('Extracted ' + (result.functions ? result.functions.length : 0) + ' functions.');
+
+            // Add to explorer
+            this.explorer[0].children.push({ name: file.name, type: 'file', vuln: (result.functions && result.functions.length > 0) });
+            this.activeTab = file.name;
+            if (!this.openTabs.includes(file.name)) {
+                this.openTabs.push(file.name);
+            }
+        } catch (error) {
+            alert('Upload failed: ' + error);
+        }
+    },
+
+    async tryToBreak() {
+        this.addToTerminal('Initiating exploit sequence for httpd@0x401215...');
+        try {
+            const response = await fetch('/api/analysis/break/1', { method: 'POST' });
+            const result = await response.json();
+            if (result.logs) {
+                result.logs.forEach((log, i) => {
+                    setTimeout(() => {
+                        this.addToTerminal(log);
+                        if (i === result.logs.length - 1) {
+                            setTimeout(() => {
+                                this.activeModule = 'sessions';
+                                this.fetchSessions();
+                            }, 1000);
+                        }
+                    }, i * 350);
+                });
+            }
+        } catch (error) {
+            this.addToTerminal('[-] Exploit failed: ' + error);
+        }
+    },
+
+    async fetchSessions() {
+        try {
+            const response = await fetch('/api/devices/1/sessions');
+            this.sessions = await response.json();
+        } catch (error) {
+            console.error('Failed to fetch sessions:', error);
+        }
+    },
+
+    async fetchReports() {
+        try {
+            const response = await fetch('/api/reports/' + this.activeProject.id);
+            this.reports = await response.json();
+        } catch (error) {
+            console.error('Failed to fetch reports:', error);
+        }
+    },
+
+    async generateReport() {
+        this.addToTerminal('Generating security report...');
+        try {
+            const response = await fetch('/api/reports/' + this.activeProject.id + '/generate', { method: 'POST' });
+            await response.json();
+            this.fetchReports();
+            this.addToTerminal('[+] Report generated successfully.');
+        } catch (error) {
+            this.addToTerminal('[-] Report generation failed: ' + error);
+        }
+    },
+
+    async fetchPayloads() {
+        try {
+            const response = await fetch('/api/payloads/');
+            this.payloads = await response.json();
+        } catch (error) {
+            console.error('Failed to fetch payloads:', error);
+        }
+    },
+
+    async morphPayload(id) {
+        this.addToTerminal('Morphing payload #' + id + ' with AI...');
+        try {
+            const response = await fetch('/api/payloads/' + id + '/morph', { method: 'POST' });
+            const result = await response.json();
+            this.addToTerminal('[+] Payload morphed. New variant created.');
+            this.fetchPayloads();
+        } catch (error) {
+            this.addToTerminal('[-] Morphing failed: ' + error);
+        }
+    },
+
+    async triggerScan() {
+        const target = '127.0.0.1'; // Default for demo
+        this.addToTerminal('Starting Nmap scan on ' + target + '...');
+        try {
+            await fetch('/api/recon/' + this.activeProject.id + '/scan?target=' + target, { method: 'POST' });
+            this.addToTerminal('[*] Scan initiated in background.');
+            setTimeout(() => this.fetchReconResults(), 5000); // Check after 5s
+        } catch (error) {
+            this.addToTerminal('[-] Scan failed: ' + error);
+        }
+    },
+
+    async fetchReconResults() {
+        try {
+            const response = await fetch('/api/recon/' + this.activeProject.id);
+            this.reconResults = await response.json();
+        } catch (error) {
+            console.error('Failed to fetch recon results:', error);
+        }
+    },
+
+    async fetchCredentials() {
+        try {
+            const response = await fetch('/api/credentials/1');
+            this.credentials = await response.json();
+        } catch (error) {
+            console.error('Failed to fetch credentials:', error);
+        }
+    },
+
+    async fetchChains() {
+        try {
+            const response = await fetch('/api/exploit-chains/' + this.activeProject.id);
+            this.exploitChains = await response.json();
+        } catch (error) {
+            console.error('Failed to fetch chains:', error);
+        }
+    },
+
+    async runFullWorkflow() {
+        if (!this.consentGiven) {
+            alert('Please provide authorization consent first.');
+            return;
+        }
+        this.addToTerminal('Starting FULL AUTOMATION WORKFLOW...');
+        await this.triggerScan();
+        setTimeout(async () => {
+            await this.generateReport();
+            this.addToTerminal('[+] Automation complete.');
+        }, 10000);
+    }
+}" x-init="addToTerminal('Welcome to Offsec Platform IDE v1.0.0'); addToTerminal('System ready.')">
+
+    <!-- Consent Overlay -->
+    <div x-show="!consentGiven" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-dark-900 border border-red-500 max-w-md w-full p-6 rounded-lg shadow-2xl">
+            <h2 class="text-red-500 font-bold text-lg mb-4 flex items-center">
+                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                Authorization Required
+            </h2>
+            <p class="text-slate-300 text-sm mb-6">
+                By entering this platform, you confirm that you have explicit, written authorization to perform offensive security testing on the target systems.
+                Unauthorized access is illegal and strictly prohibited.
+            </p>
+            <div class="flex space-x-3">
+                <button @click="consentGiven = true; addToTerminal('[+] Authorization confirmed by analyst.')" class="flex-grow bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded">I AM AUTHORIZED</button>
+                <button class="px-4 py-2 text-slate-500 hover:text-slate-300">EXIT</button>
             </div>
-            <ul class="space-y-1">
-                <li class="p-2 hover:bg-slate-700 rounded cursor-pointer text-sm" @click="activeProject = 'Project X'">Project X</li>
-                <li class="p-2 hover:bg-slate-700 rounded cursor-pointer text-sm" @click="activeProject = 'Firmware Audit'">Firmware Audit</li>
-            </ul>
         </div>
+    </div>
 
-        <!-- Targets Section -->
-        <div class="p-4 border-b border-slate-700">
-            <h2 class="text-sm font-semibold uppercase text-slate-400 mb-2">Targets</h2>
-            <ul class="space-y-1">
-                <li class="p-2 hover:bg-slate-700 rounded cursor-pointer text-sm flex items-center" @click="activeDevice = '192.168.1.1'">
-                    <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                    Router-Main (192.168.1.1)
-                </li>
-                <li class="p-2 hover:bg-slate-700 rounded cursor-pointer text-sm flex items-center" @click="activeDevice = '192.168.1.50'">
-                    <span class="w-2 h-2 bg-slate-500 rounded-full mr-2"></span>
-                    IoT-Camera (192.168.1.50)
-                </li>
-            </ul>
-        </div>
-
-        <!-- Modules Section -->
-        <div class="p-4 flex-grow overflow-y-auto">
-            <h2 class="text-sm font-semibold uppercase text-slate-400 mb-2">Modules</h2>
-            <nav class="space-y-1">
-                <button @click="activeModule = 'dashboard'" :class="activeModule === 'dashboard' ? 'bg-slate-700' : ''" class="w-full text-left p-2 hover:bg-slate-700 rounded text-sm">Dashboard</button>
-                <button @click="activeModule = 'binary'" :class="activeModule === 'binary' ? 'bg-slate-700' : ''" class="w-full text-left p-2 hover:bg-slate-700 rounded text-sm">Binary Analysis</button>
-                <button @click="activeModule = 'device'" :class="activeModule === 'device' ? 'bg-slate-700' : ''" class="w-full text-left p-2 hover:bg-slate-700 rounded text-sm">Device Interaction</button>
-                <button @click="activeModule = 'payloads'" :class="activeModule === 'payloads' ? 'bg-slate-700' : ''" class="w-full text-left p-2 hover:bg-slate-700 rounded text-sm">Payloads & Exploits</button>
-                <button @click="activeModule = 'sessions'" :class="activeModule === 'sessions' ? 'bg-slate-700' : ''" class="w-full text-left p-2 hover:bg-slate-700 rounded text-sm">Sessions</button>
-                <button @click="activeModule = 'reports'" :class="activeModule === 'reports' ? 'bg-slate-700' : ''" class="w-full text-left p-2 hover:bg-slate-700 rounded text-sm">Reports</button>
-                <button @click="activeModule = 'ai'" :class="activeModule === 'ai' ? 'bg-slate-700' : ''" class="w-full text-left p-2 hover:bg-slate-700 rounded text-sm text-purple-400">AI Assistant</button>
+    <!-- Top Bar -->
+    <header class="h-10 bg-dark-900 border-b border-slate-700 flex items-center justify-between px-4 select-none">
+        <div class="flex items-center space-x-4">
+            <span class="text-red-500 font-bold text-sm tracking-tighter">OFFSEC IDE</span>
+            <nav class="flex space-x-3 text-xs text-slate-400">
+                <span class="hover:text-slate-200 cursor-pointer">File</span>
+                <span class="hover:text-slate-200 cursor-pointer">Edit</span>
+                <span class="hover:text-slate-200 cursor-pointer">View</span>
+                <span class="hover:text-slate-200 cursor-pointer">Go</span>
+                <span class="hover:text-slate-200 cursor-pointer">Run</span>
+                <span class="hover:text-slate-200 cursor-pointer">Terminal</span>
+                <span class="hover:text-slate-200 cursor-pointer">Help</span>
             </nav>
         </div>
-    </aside>
+        <div class="text-xs text-slate-500">
+            Project: <span class="text-red-400 font-medium" x-text="activeProject.name"></span>
+        </div>
+    </header>
 
-    <!-- Center Main Panel -->
-    <main class="flex-grow flex flex-col main-panel">
-        <!-- Header -->
-        <header class="p-4 border-b border-slate-700 flex justify-between items-center">
-            <h3 class="text-lg font-medium" x-text="activeModule.charAt(0).toUpperCase() + activeModule.slice(1)">Dashboard</h3>
-            <div class="text-sm text-slate-400">
-                Active Project: <span class="text-slate-200" x-text="activeProject || 'None'"></span>
+    <div class="flex-grow flex overflow-hidden">
+        <!-- Activity Bar -->
+        <aside class="w-12 bg-dark-900 border-r border-slate-800 flex flex-col items-center py-4 space-y-4">
+            <div @click="activeModule = 'explorer'" :class="activeModule === 'explorer' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Explorer">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
             </div>
-        </header>
+            <div @click="activeModule = 'binary'" :class="activeModule === 'binary' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Binary Analysis">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+            </div>
+            <div @click="activeModule = 'payloads'; fetchPayloads()" :class="activeModule === 'payloads' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Payload Generator">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            </div>
+            <div @click="activeModule = 'sessions'; fetchSessions()" :class="activeModule === 'sessions' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Sessions">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2-2v12a2 2 0 00-2 2z"></path></svg>
+            </div>
+            <div @click="activeModule = 'credentials'; fetchCredentials()" :class="activeModule === 'credentials' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Credentials">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+            </div>
+            <div @click="activeModule = 'recon'; fetchReconResults()" :class="activeModule === 'recon' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Reconnaissance">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+            <div @click="activeModule = 'chains'; fetchChains()" :class="activeModule === 'chains' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Exploit Chains">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            </div>
+            <div @click="activeModule = 'reports'; fetchReports()" :class="activeModule === 'reports' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Reports">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2a2 2 0 00-2-2H5a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+            </div>
+        </aside>
 
-        <!-- Content Area -->
-        <div class="p-6 flex-grow overflow-y-auto">
-
-            <!-- Dashboard View -->
-            <template x-if="activeModule === 'dashboard'">
-                <div class="grid grid-cols-3 gap-6">
-                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <h4 class="text-slate-400 text-xs uppercase font-bold mb-2">Total Findings</h4>
-                        <div class="text-3xl font-bold text-red-500">12</div>
-                    </div>
-                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <h4 class="text-slate-400 text-xs uppercase font-bold mb-2">Active Sessions</h4>
-                        <div class="text-3xl font-bold text-green-500">3</div>
-                    </div>
-                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <h4 class="text-slate-400 text-xs uppercase font-bold mb-2">Target Devices</h4>
-                        <div class="text-3xl font-bold text-blue-500">8</div>
-                    </div>
-
-                    <div class="col-span-3 bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <h4 class="text-slate-400 text-xs uppercase font-bold mb-4">Recent Activity</h4>
-                        <ul class="space-y-3">
-                            <li class="text-sm border-l-2 border-red-500 pl-3">
-                                <span class="text-slate-400 text-xs block">10 mins ago</span>
-                                Vulnerability <span class="text-red-400">Buffer Overflow</span> found in <span class="text-blue-400">httpd</span> on Router-Main.
-                            </li>
-                            <li class="text-sm border-l-2 border-green-500 pl-3">
-                                <span class="text-slate-400 text-xs block">1 hour ago</span>
-                                New session established on <span class="text-blue-400">192.168.1.50</span> via <span class="text-purple-400">exploit/linux/http/camera_rce</span>.
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </template>
-
-            <!-- Binary Analysis View (Placeholder) -->
-            <template x-if="activeModule === 'binary'">
-                <div>
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold">Binary Analysis</h2>
-                        <div class="space-x-2">
-                            <button class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm">Upload Binary</button>
-                            <button class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm">Scan with AI</button>
+        <!-- Sidebar / Explorer -->
+        <aside class="w-60 bg-dark-950 border-r border-slate-800 flex flex-col overflow-hidden">
+            <div class="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest flex justify-between items-center">
+                <span>Explorer</span>
+                <svg class="w-3 h-3 cursor-pointer hover:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            </div>
+            <div class="flex-grow overflow-y-auto px-2 py-1 space-y-0.5 text-xs">
+                <template x-for="item in explorer" :key="item.name">
+                    <div>
+                        <div @click="item.open = !item.open" class="flex items-center space-x-1 p-1 hover:bg-slate-800 rounded cursor-pointer group">
+                            <span x-show="item.type === 'folder'" :class="item.open ? 'rotate-90' : ''" class="transition-transform">
+                                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"></path></svg>
+                            </span>
+                            <span x-text="item.name" :class="item.vuln ? 'text-red-400' : ''"></span>
+                        </div>
+                        <div x-show="item.open && item.children" class="ml-4 space-y-0.5 border-l border-slate-800 pl-2">
+                            <template x-for="child in item.children" :key="child.name">
+                                <div class="p-1 hover:bg-slate-800 rounded cursor-pointer flex justify-between group">
+                                    <span x-text="child.name" :class="child.vuln ? 'text-red-400' : ''"></span>
+                                    <span x-show="child.vuln" class="text-[8px] bg-red-900 text-red-200 px-1 rounded opacity-0 group-hover:opacity-100">VULN</span>
+                                </div>
+                            </template>
                         </div>
                     </div>
-                    <div class="bg-slate-800 rounded-lg border border-slate-700 p-4 font-mono text-sm">
-                        <div class="text-green-400">00401234: push rbp</div>
-                        <div class="text-green-400">00401235: mov rbp, rsp</div>
-                        <div class="text-green-400">00401238: sub rsp, 0x40</div>
-                        <div class="text-yellow-400">0040123c: lea rdi, [rbp-0x40]</div>
-                        <div class="text-yellow-400">00401240: call gets ; <span class="text-red-500 font-bold">CRITICAL: gets() is unsafe!</span></div>
+                </template>
+            </div>
+        </aside>
+
+        <!-- Main Editor Area -->
+        <main class="flex-grow flex flex-col overflow-hidden bg-dark-950">
+            <!-- Tabs Bar -->
+            <div class="h-9 bg-dark-900 flex border-b border-slate-800">
+                <template x-for="tab in openTabs" :key="tab">
+                    <div @click="activeTab = tab" :class="activeTab === tab ? 'tab-active' : 'border-t-2 border-transparent'" class="px-4 flex items-center space-x-2 text-xs cursor-pointer hover:bg-dark-800 border-r border-slate-800">
+                        <span x-text="tab"></span>
+                        <svg class="w-3 h-3 text-slate-500 hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Editor Toolbar -->
+            <div class="h-8 bg-dark-950 border-b border-slate-800 flex items-center justify-between px-4 text-[10px] text-slate-400">
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-1 cursor-pointer hover:text-slate-200" @click="focusMode = !focusMode">
+                        <div :class="focusMode ? 'bg-red-500' : 'bg-slate-700'" class="w-6 h-3 rounded-full relative transition-colors">
+                            <div :class="focusMode ? 'translate-x-3' : 'translate-x-0'" class="w-3 h-3 bg-white rounded-full transition-transform"></div>
+                        </div>
+                        <span>Focus on exploitable</span>
+                    </div>
+                    <span class="hover:text-slate-200 cursor-pointer">Compare with Source</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button @click="runFullWorkflow()" class="bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/50 px-3 py-1 rounded flex items-center space-x-2">
+                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                        <span>RUN FULL AUTOMATION</span>
+                    </button>
+                    <span class="bg-red-900/40 text-red-400 px-2 rounded">2 Vulnerabilities Detected</span>
+                </div>
+            </div>
+
+            <!-- Dashboard View -->
+            <div x-show="activeModule === 'dashboard' && activeTab !== 'Network Map'" class="flex-grow p-6 overflow-y-auto">
+                 <!-- Drag & Drop Zone -->
+                 <div class="border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center transition-colors cursor-pointer border-slate-700 bg-slate-800/50 hover:border-slate-500"
+                 @click="$refs.fileInput.click()">
+                 <svg class="w-12 h-12 text-slate-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                 <p class="text-lg font-medium">Upload Binary / Firmware</p>
+                 <input type="file" x-ref="fileInput" class="hidden" @change="handleFileUpload($event.target.files)">
+                </div>
+            </div>
+
+            <!-- Code Editor Side-by-Side -->
+            <div x-show="activeModule === 'binary' && activeTab !== 'Network Map'" class="flex-grow flex overflow-hidden">
+                <div class="flex-grow grid grid-cols-2 gap-px bg-slate-800 overflow-hidden">
+                    <!-- Left Pane -->
+                    <div class="bg-dark-950 flex flex-col overflow-hidden">
+                        <div class="bg-dark-900 px-2 py-1 text-[9px] font-bold text-slate-500 uppercase border-b border-slate-800">Source (Simulated)</div>
+                        <div class="code-pane p-2 font-mono text-xs leading-relaxed">
+                            <template x-for="item in analysisData.python" :key="item.line">
+                                <div x-show="!focusMode || item.vuln" class="flex group hover:bg-slate-800/50 rounded" :class="item.vuln ? 'bg-red-900/10' : ''">
+                                    <span class="w-8 text-slate-700 text-right pr-2 select-none" x-text="item.line"></span>
+                                    <span class="flex-grow" :class="item.vuln ? 'text-red-400 font-bold' : 'text-blue-300'" x-text="item.text"></span>
+                                    <template x-if="item.vuln">
+                                        <button @click="tryToBreak()" class="ml-2 bg-red-600 hover:bg-red-500 text-white px-2 py-0 rounded text-[9px] font-bold">Try to break this</button>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    <!-- Right Pane -->
+                    <div class="bg-dark-950 flex flex-col overflow-hidden relative">
+                        <div class="bg-dark-900 px-2 py-1 text-[9px] font-bold text-slate-500 uppercase border-b border-slate-800">Assembly</div>
+                        <div class="code-pane p-2 font-mono text-xs leading-relaxed">
+                            <template x-for="item in analysisData.asm" :key="item.addr">
+                                <div x-show="!focusMode || item.vuln" class="flex hover:bg-slate-800/50 rounded" :class="item.vuln ? 'bg-red-900/10 border-l-2 border-red-500' : ''">
+                                    <span class="w-16 text-slate-700 pr-2 select-none" x-text="item.addr"></span>
+                                    <span class="flex-grow" :class="item.vuln ? 'text-red-400 font-bold' : 'text-green-500'" x-text="item.text"></span>
+                                </div>
+                            </template>
+                        </div>
+                        <!-- Minimap -->
+                        <div class="absolute right-0 top-8 bottom-0 minimap bg-dark-900 flex flex-col items-center py-2 opacity-50 hover:opacity-100 transition-opacity">
+                            <div class="minimap-mark bg-slate-700"></div>
+                            <div class="minimap-mark bg-slate-700"></div>
+                            <div class="minimap-mark bg-slate-700"></div>
+                            <div class="minimap-mark bg-red-500"></div>
+                            <div class="minimap-mark bg-red-500"></div>
+                            <div class="minimap-mark bg-slate-700"></div>
+                        </div>
                     </div>
                 </div>
-            </template>
+            </div>
 
-            <!-- Payloads View -->
-            <template x-if="activeModule === 'payloads'">
-                <div>
+            <!-- Recon View -->
+            <div x-show="activeModule === 'recon'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-4xl mx-auto">
                     <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold">Payloads & Exploits</h2>
-                        <button class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm">Create Payload</button>
+                        <h2 class="text-xl font-bold text-slate-300">Network Reconnaissance</h2>
+                        <button @click="triggerScan()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold">New Scan</button>
                     </div>
-                    <table class="w-full text-sm text-left border-collapse">
-                        <thead class="bg-slate-800 text-slate-400 uppercase text-xs">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <template x-for="res in reconResults" :key="res.id">
+                            <div class="bg-dark-900 border border-slate-800 p-3 rounded">
+                                <div class="flex justify-between">
+                                    <span class="text-green-500 font-mono" x-text="res.ip + ':' + res.port"></span>
+                                    <span class="text-[10px] text-slate-500 uppercase" x-text="res.protocol"></span>
+                                </div>
+                                <div class="text-sm font-bold mt-1" x-text="res.service"></div>
+                                <div class="text-[10px] text-slate-400" x-text="'Version: ' + (res.version || 'Unknown')"></div>
+                            </div>
+                        </template>
+                    </div>
+                    <div x-show="reconResults.length === 0" class="text-center p-8 text-slate-600 italic">No recon results yet. Trigger a scan to discover the attack surface.</div>
+                </div>
+            </div>
+
+            <!-- Credentials View -->
+            <div x-show="activeModule === 'credentials'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-2xl mx-auto">
+                    <h2 class="text-xl font-bold text-slate-300 mb-4">Discovered Credentials</h2>
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead class="bg-dark-900 text-slate-500 uppercase">
                             <tr>
-                                <th class="p-3 border-b border-slate-700">Name</th>
-                                <th class="p-3 border-b border-slate-700">Type</th>
-                                <th class="p-3 border-b border-slate-700">Platform</th>
-                                <th class="p-3 border-b border-slate-700">Result</th>
-                                <th class="p-3 border-b border-slate-700">Actions</th>
+                                <th class="p-2 border border-slate-800">Target Device</th>
+                                <th class="p-2 border border-slate-800">Username</th>
+                                <th class="p-2 border border-slate-800">Password</th>
+                                <th class="p-2 border border-slate-800">Type</th>
+                                <th class="p-2 border border-slate-800">Origin</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr class="hover:bg-slate-800/50">
-                                <td class="p-3 border-b border-slate-700">linux/x64/reverse_tcp</td>
-                                <td class="p-3 border-b border-slate-700">reverse_shell</td>
-                                <td class="p-3 border-b border-slate-700">Linux/x64</td>
-                                <td class="p-3 border-b border-slate-700 text-green-500">Success</td>
-                                <td class="p-3 border-b border-slate-700">
-                                    <button class="text-blue-400 hover:underline">View</button>
-                                    <button class="text-red-400 hover:underline ml-2">Run</button>
-                                </td>
+                            <template x-for="cred in credentials" :key="cred.id">
+                                <tr class="hover:bg-slate-800/30">
+                                    <td class="p-2 border border-slate-800" x-text="cred.device_id"></td>
+                                    <td class="p-2 border border-slate-800" x-text="cred.username"></td>
+                                    <td class="p-2 border border-slate-800 text-red-400 font-mono" x-text="cred.password"></td>
+                                    <td class="p-2 border border-slate-800" x-text="cred.type"></td>
+                                    <td class="p-2 border border-slate-800 text-[10px]" x-text="cred.origin"></td>
+                                </tr>
+                            </template>
+                            <tr x-show="credentials.length === 0">
+                                <td colspan="5" class="p-8 text-center text-slate-600 italic">No credentials found yet.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-            </template>
+            </div>
 
-            <!-- Sessions View -->
-            <template x-if="activeModule === 'sessions'">
-                <div>
-                    <h2 class="text-2xl font-bold mb-6">Active Sessions</h2>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="bg-slate-800 border border-green-500/30 p-4 rounded-lg">
-                            <div class="flex justify-between mb-2">
-                                <span class="text-xs font-bold uppercase text-slate-400">Session #1</span>
-                                <span class="text-xs text-green-500 font-bold">ACTIVE</span>
-                            </div>
-                            <div class="text-sm">
-                                <p>Target: 192.168.1.1 (Router-Main)</p>
-                                <p>Type: Meterpreter / Linux</p>
-                                <p>User: root</p>
-                            </div>
-                            <button class="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded">Interact</button>
-                        </div>
+            <!-- Other Views -->
+            <div x-show="activeModule === 'sessions'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-4xl mx-auto">
+                    <h2 class="text-xl font-bold text-slate-300 mb-4">Active Implant Sessions</h2>
+                    <div class="bg-dark-950 border border-slate-800 rounded overflow-hidden">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead class="bg-dark-900 text-slate-500 uppercase">
+                                <tr>
+                                    <th class="p-3 border border-slate-800">ID</th>
+                                    <th class="p-3 border border-slate-800">Type</th>
+                                    <th class="p-3 border border-slate-800">Target IP</th>
+                                    <th class="p-3 border border-slate-800">Status</th>
+                                    <th class="p-3 border border-slate-800">Last Seen</th>
+                                    <th class="p-3 border border-slate-800">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="session in sessions" :key="session.id">
+                                    <tr class="hover:bg-slate-800/30">
+                                        <td class="p-3 border border-slate-800 font-mono text-red-400" x-text="'#' + session.id"></td>
+                                        <td class="p-3 border border-slate-800" x-text="session.type"></td>
+                                        <td class="p-3 border border-slate-800 text-slate-400" x-text="session.info ? JSON.parse(session.info).IP : 'Unknown'"></td>
+                                        <td class="p-3 border border-slate-800">
+                                            <span class="px-2 py-0.5 rounded-full text-[10px]" :class="session.connected ? 'bg-green-900/30 text-green-500' : 'bg-slate-800 text-slate-500'" x-text="session.connected ? 'CONNECTED' : 'DISCONNECTED'"></span>
+                                        </td>
+                                        <td class="p-3 border border-slate-800 text-slate-500" x-text="session.last_seen || 'Never'"></td>
+                                        <td class="p-3 border border-slate-800 text-center">
+                                            <button class="text-red-500 hover:text-red-400 font-bold">INTERACT</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <tr x-show="sessions.length === 0">
+                                    <td colspan="6" class="p-8 text-center text-slate-600 italic">No active sessions found. Run an exploit to establish a connection.</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-            </template>
+            </div>
 
-            <!-- Other views placeholders -->
-            <template x-if="['device', 'reports', 'ai'].includes(activeModule)">
-                <div class="flex flex-col items-center justify-center h-full text-slate-500">
-                    <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-                    <p class="text-xl">Module <span class="text-slate-300 font-bold" x-text="activeModule"></span> is under construction.</p>
-                </div>
-            </template>
-
-        </div>
-    </main>
-
-    <!-- Right Sidebar - Details & AI -->
-    <aside class="w-80 details-sidebar border-l border-slate-700 flex flex-col">
-        <div class="p-4 border-b border-slate-700">
-            <h3 class="font-semibold">AI Analysis</h3>
-        </div>
-        <div class="p-4 flex-grow overflow-y-auto">
-            <div x-show="activeModule === 'binary'" class="space-y-4">
-                <div class="bg-slate-900 p-3 rounded border border-purple-500/30">
-                    <h4 class="text-purple-400 text-xs font-bold uppercase mb-2">AI Suggestion</h4>
-                    <p class="text-xs italic text-slate-300">"The call to `gets` at 0x401240 is highly vulnerable to stack-based buffer overflow. An attacker can overwrite the return address to gain execution control."</p>
-                </div>
-                <div>
-                    <h4 class="text-slate-400 text-xs font-bold uppercase mb-2">Exploit Idea</h4>
-                    <p class="text-xs text-slate-300">Generate a ROP chain to bypass NX/DEP and execute a reverse shell.</p>
-                    <button class="mt-2 w-full bg-purple-700 hover:bg-purple-800 text-white text-xs py-1 rounded">Generate Exploit with AI</button>
+            <!-- Payloads View -->
+            <div x-show="activeModule === 'payloads'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-4xl mx-auto">
+                    <h2 class="text-xl font-bold text-slate-300 mb-4">Payload Manager</h2>
+                    <div class="grid grid-cols-1 gap-4">
+                        <template x-for="payload in payloads" :key="payload.id">
+                            <div class="bg-dark-900 border border-slate-800 p-4 rounded">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div>
+                                        <h3 class="text-red-400 font-bold" x-text="payload.name"></h3>
+                                        <p class="text-[10px] text-slate-500" x-text="'Type: ' + payload.type"></p>
+                                    </div>
+                                    <button @click="morphPayload(payload.id)" class="bg-purple-600 hover:bg-purple-500 text-white text-[10px] px-3 py-1 rounded font-bold uppercase">Morph with AI</button>
+                                </div>
+                                <div class="bg-black p-2 rounded text-[10px] font-mono text-slate-300 max-h-32 overflow-y-auto">
+                                    <pre x-text="payload.base_code"></pre>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="payloads.length === 0" class="text-center p-8 text-slate-600 italic">No payloads generated yet.</div>
+                    </div>
                 </div>
             </div>
 
-            <div x-show="activeModule !== 'binary'" class="text-center text-slate-500 mt-10">
-                <p class="text-sm italic">Select an item to see details and AI analysis.</p>
+            <!-- Reports View -->
+            <!-- Exploit Chains View -->
+            <div x-show="activeModule === 'chains'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-4xl mx-auto">
+                    <h2 class="text-xl font-bold text-slate-300 mb-4">Multi-Step Exploit Chains</h2>
+                    <div class="grid grid-cols-1 gap-4">
+                        <template x-for="chain in exploitChains" :key="chain.id">
+                            <div class="bg-dark-900 border border-slate-800 p-4 rounded">
+                                <h3 class="text-blue-400 font-bold mb-2" x-text="chain.name"></h3>
+                                <div class="space-y-2">
+                                    <template x-for="step in (typeof chain.steps === 'string' ? JSON.parse(chain.steps) : chain.steps)" :key="step.step">
+                                        <div class="flex items-center space-x-3 text-xs">
+                                            <span class="bg-slate-800 text-slate-400 w-5 h-5 rounded-full flex items-center justify-center" x-text="step.step"></span>
+                                            <span class="font-bold text-slate-200" x-text="step.action"></span>
+                                            <span class="text-slate-500 italic" x-text="step.description"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                                <div class="mt-4 flex justify-end">
+                                    <button class="bg-red-600 hover:bg-red-500 text-white text-[10px] px-3 py-1 rounded font-bold uppercase">Execute Chain</button>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="exploitChains.length === 0" class="text-center p-8 text-slate-600 italic">No exploit chains built yet. Select a finding to suggest a chain.</div>
+                    </div>
+                </div>
             </div>
-        </div>
-        <div class="p-4 border-t border-slate-700 bg-slate-900">
-            <div class="relative">
-                <input type="text" placeholder="Ask AI..." class="w-full bg-slate-800 border border-slate-700 rounded-full py-2 px-4 text-xs focus:outline-none focus:border-purple-500">
-                <button class="absolute right-2 top-1 text-purple-500 hover:text-purple-400">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
-                </button>
+
+            <div x-show="activeModule === 'reports'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-2xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-300">Project Reports</h2>
+                        <button @click="generateReport()" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded text-xs font-bold shadow-lg shadow-red-900/20">Generate Final Report</button>
+                    </div>
+                    <div class="space-y-3">
+                        <template x-for="report in reports" :key="report.id">
+                            <div class="bg-dark-900 border border-slate-800 p-4 rounded flex justify-between items-center group">
+                                <div>
+                                    <div class="text-sm font-bold text-slate-200" x-text="report.title"></div>
+                                    <div class="text-[10px] text-slate-500" x-text="'Format: ' + report.format.toUpperCase() + ' | Generated: ' + report.generated_at"></div>
+                                </div>
+                                <a :href="'/api/reports/download/' + report.id" class="text-blue-400 hover:text-blue-300 flex items-center text-xs">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                    Download
+                                </a>
+                            </div>
+                        </template>
+                        <div x-show="reports.length === 0" class="text-center p-8 text-slate-600 italic">No reports found for this project.</div>
+                    </div>
+                </div>
             </div>
+
+            <!-- Terminal Area -->
+            <div class="h-1/3 min-h-[150px] border-t border-slate-700 bg-black flex flex-col overflow-hidden">
+                <div class="h-8 bg-dark-900 flex border-b border-slate-800 px-4 items-center space-x-4 text-xs select-none">
+                    <span class="text-white border-b border-white pb-1 font-medium">TERMINAL</span>
+                    <span class="text-slate-500 hover:text-slate-300 cursor-pointer">DEBUG CONSOLE</span>
+                    <span class="text-slate-500 hover:text-slate-300 cursor-pointer">OUTPUT</span>
+                    <div class="flex-grow"></div>
+                    <button @click="terminalOutput = []" class="text-slate-500 hover:text-slate-300">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+                <div id="terminal-view" class="terminal flex-grow p-4 text-xs overflow-y-auto">
+                    <template x-for="(line, index) in terminalOutput" :key="index">
+                        <div class="mb-1">
+                            <span class="text-green-500">➜</span>
+                            <span class="text-slate-500" x-text="' ['+line.time+'] '"></span>
+                            <span :class="line.text.startsWith('[!]') ? 'text-red-400 font-bold' : (line.text.startsWith('[*]') ? 'text-green-400' : (line.text.startsWith('[+]') ? 'text-blue-400' : 'text-slate-300'))" x-text="line.text"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Side: Analysis & AI -->
+        <aside class="w-80 bg-dark-950 border-l border-slate-800 flex flex-col overflow-hidden">
+            <div class="p-3 border-b border-slate-800 text-[10px] font-bold text-slate-500 uppercase tracking-widest flex justify-between items-center">
+                <span>AI Insights</span>
+                <span class="text-green-500 flex items-center"><span class="w-1.5 h-1.5 bg-green-500 rounded-full mr-1 animate-pulse"></span>Online</span>
+            </div>
+            <div class="flex-grow overflow-y-auto p-4 space-y-4">
+                <!-- Risk Meter -->
+                <div class="bg-dark-900 p-3 rounded border border-slate-800">
+                    <h4 class="text-slate-500 text-[9px] font-bold uppercase tracking-tighter mb-2">Composite Risk Score</h4>
+                    <div class="flex items-center space-x-2">
+                        <div class="flex-grow bg-slate-800 h-2 rounded-full overflow-hidden">
+                            <div :style="'width: ' + (activeTab === 'vulnerable' ? '92%' : '40%')" class="bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 h-full transition-all duration-1000"></div>
+                        </div>
+                        <span class="text-red-500 font-bold text-xs" x-text="activeTab === 'vulnerable' ? '92' : '40'"></span>
+                    </div>
+                </div>
+
+                <div class="bg-dark-900 border border-purple-500/30 p-3 rounded shadow-lg">
+                    <div class="flex items-center mb-2">
+                        <svg class="w-4 h-4 text-purple-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <h4 class="text-purple-400 text-xs font-bold uppercase">Exploit Strategy</h4>
+                    </div>
+                    <p class="text-[11px] leading-relaxed text-slate-300 italic">"The strcpy at 0x401215 is vulnerable to a classic stack overflow. I recommend using a ROP chain to bypass DEP/NX. I can generate a Python payload for you."</p>
+                    <button @click="tryToBreak()" class="mt-3 w-full bg-purple-600 hover:bg-purple-700 text-white text-[10px] py-1.5 rounded font-bold uppercase tracking-wider">Generate & Run Exploit</button>
+                </div>
+
+                <div class="space-y-2">
+                    <h4 class="text-slate-500 text-[9px] font-bold uppercase tracking-tighter">Vulnerability Reference</h4>
+                    <div class="bg-dark-800 p-2 rounded text-[10px]">
+                        <div class="text-red-400 font-bold">CVE-2023-XXXXX</div>
+                        <p class="text-slate-400">Memory corruption in httpd headers parsing.</p>
+                        <a href="#" class="text-blue-400 hover:underline mt-1 block">View in Exploit-DB</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Model Selector & Chat -->
+            <div class="p-3 border-t border-slate-800 bg-dark-900 space-y-2">
+                <div class="flex justify-between items-center px-1">
+                    <span class="text-[9px] text-slate-500 uppercase font-bold">Model Profile</span>
+                    <select x-model="selectedModel" class="bg-dark-950 text-purple-400 text-[10px] border-none outline-none cursor-pointer">
+                        <option>Gemini-1.5-Pro</option>
+                        <option>GPT-4o</option>
+                        <option>Claude-3.5-Sonnet</option>
+                    </select>
+                </div>
+                <div class="relative">
+                    <input type="text" placeholder="Ask AI Assistant..." class="w-full bg-dark-950 border border-slate-700 rounded py-2 px-3 text-xs focus:outline-none focus:border-purple-500 placeholder-slate-600">
+                    <button class="absolute right-2 top-2 text-purple-500 hover:text-purple-400">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="h-6 bg-red-600 flex items-center justify-between px-3 text-[10px] text-white font-medium select-none">
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center">
+                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                <span>Live Connection: Router-Main (192.168.1.1)</span>
+            </div>
+            <span>Vulnerabilities: 2</span>
         </div>
-    </aside>
+        <div class="flex items-center space-x-3">
+            <span>UTF-8</span>
+            <span>x86_64</span>
+            <span>AI: Gemini-1.5-Pro</span>
+        </div>
+    </footer>
 
 </body>
 </html>

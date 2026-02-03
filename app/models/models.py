@@ -110,6 +110,7 @@ class Function(Base):
     name = Column(String)
     offset = Column(String)
     size = Column(Integer)
+    hash = Column(String) # SHA-256 of function body
     danger_score = Column(Integer)  # 0-100
     vuln_type = Column(String)
     assembly_snippet = Column(Text)
@@ -334,6 +335,95 @@ class Log(Base):
     timestamp = Column(DateTime, server_default=func.now())
 
     user = relationship("User", back_populates="logs")
+
+class FuzzingJob(Base):
+    __tablename__ = "fuzzing_jobs"
+    id = Column(Integer, primary_key=True)
+    binary_id = Column(Integer, ForeignKey("binaries.id"))
+    target_function_id = Column(Integer, ForeignKey("functions.id"), nullable=True)
+    status = Column(String) # pending, running, completed, failed
+    config = Column(JSON) # e.g. {"engine": "libfuzzer", "timeout": 3600}
+    created_at = Column(DateTime, server_default=func.now())
+
+    results = relationship("FuzzingResult", back_populates="job")
+
+class FuzzingResult(Base):
+    __tablename__ = "fuzzing_results"
+    id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, ForeignKey("fuzzing_jobs.id"))
+    input_data = Column(Text) # input that caused the crash
+    crash_log = Column(Text)
+    stack_trace = Column(Text)
+    severity = Column(String)
+    created_at = Column(DateTime, server_default=func.now())
+
+    job = relationship("FuzzingJob", back_populates="results")
+
+class BruteforceJob(Base):
+    __tablename__ = "bruteforce_jobs"
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id"))
+    service = Column(String) # ssh, telnet, http_basic, etc.
+    status = Column(String)
+    config = Column(JSON) # e.g. {"wordlist": "common.txt", "threads": 10}
+    created_at = Column(DateTime, server_default=func.now())
+
+    results = relationship("BruteforceResult", back_populates="job")
+
+class BruteforceResult(Base):
+    __tablename__ = "bruteforce_results"
+    id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, ForeignKey("bruteforce_jobs.id"))
+    username = Column(String)
+    password = Column(String)
+    success = Column(Boolean)
+    response_code = Column(String)
+    created_at = Column(DateTime, server_default=func.now())
+
+    job = relationship("BruteforceJob", back_populates="results")
+
+class CloningJob(Base):
+    __tablename__ = "cloning_jobs"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    channel = Column(String) # usb, network, wifi, bluetooth, drag_drop
+    source_info = Column(String) # IP, MAC, Serial, etc.
+    status = Column(String)
+    binary_id = Column(Integer, ForeignKey("binaries.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class WebProxyRequest(Base):
+    __tablename__ = "web_proxy_requests"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    method = Column(String)
+    url = Column(String)
+    headers = Column(JSON)
+    body = Column(Text)
+    response_code = Column(Integer)
+    response_body = Column(Text)
+    captured_at = Column(DateTime, server_default=func.now())
+
+class PhishingCampaign(Base):
+    __tablename__ = "phishing_campaigns"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    name = Column(String)
+    template = Column(String) # login_page, survey, download
+    status = Column(String) # active, completed
+    clicks = Column(Integer, default=0)
+    submissions = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+class CrackingJob(Base):
+    __tablename__ = "cracking_jobs"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    hash_type = Column(String) # NTLM, MD5, SHA256
+    hashes = Column(JSON) # List of hashes to crack
+    status = Column(String)
+    results = Column(JSON) # List of cracked passwords
+    created_at = Column(DateTime, server_default=func.now())
 
 class Credential(Base):
     __tablename__ = "credentials"

@@ -21,6 +21,12 @@ The platform uses a central SQLite database with the following tables:
 13. **ai_analysis**: Stores AI-analysis results for code/findings.
 14. **users**: Multi-user support.
 15. **logs**: Audit trail for actions taken.
+16. **fuzzing_jobs**: Fuzzing engine configurations and jobs.
+17. **bruteforce_jobs**: Automated credential testing tasks.
+18. **cloning_jobs**: Target acquisition and cloning history.
+19. **web_proxy_requests**: Intercepted HTTP(S) traffic logs.
+20. **phishing_campaigns**: Social engineering and phishing simulation data.
+21. **cracking_jobs**: Password hash cracking tasks and results.
 
 ## Getting Started
 

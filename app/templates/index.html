@@ -53,6 +53,14 @@
             consolePrompt: 'offsec > ',
             consoleInput: '',
             consoleHistory: [],
+            fuzzingJobs: [],
+            bruteforceJobs: [],
+            cloningJobs: [],
+            webRequests: [],
+            phishingCampaigns: [],
+            crackingJobs: [],
+            showCloneModal: false,
+            cloningConfig: { channel: 'network', source: '' },
             consentGiven: false,
             selectedModel: 'Gemini-1.5-Pro',
             explorer: [
@@ -335,6 +343,110 @@
                 }
             },
 
+            async triggerFuzzing(binaryId, funcId = null) {
+                this.addToTerminal('Starting fuzzer on binary #' + binaryId + '...');
+                try {
+                    const resp = await fetch(`/api/fuzzing/start?binary_id=${binaryId}${funcId ? '&target_function_id='+funcId : ''}`, { method: 'POST' });
+                    const data = await resp.json();
+                    this.addToTerminal('[+] Fuzzing job started: ' + data.job_id);
+                    this.fetchFuzzingJobs(binaryId);
+                } catch (error) {
+                    this.addToTerminal('[-] Fuzzing failed: ' + error);
+                }
+            },
+
+            async fetchFuzzingJobs(binaryId) {
+                try {
+                    const resp = await fetch(`/api/fuzzing/jobs/${binaryId}`);
+                    this.fuzzingJobs = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async triggerBruteforce(deviceId, service) {
+                this.addToTerminal('Starting bruteforce on ' + service + ' for device #' + deviceId + '...');
+                try {
+                    const resp = await fetch(`/api/bruteforce/start?device_id=${deviceId}&service_name=${service}`, { method: 'POST' });
+                    const data = await resp.json();
+                    this.addToTerminal('[+] Bruteforce job started: ' + data.job_id);
+                    this.fetchBruteforceJobs(deviceId);
+                } catch (error) {
+                    this.addToTerminal('[-] Bruteforce failed: ' + error);
+                }
+            },
+
+            async fetchBruteforceJobs(deviceId) {
+                try {
+                    const resp = await fetch(`/api/bruteforce/jobs/${deviceId}`);
+                    this.bruteforceJobs = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async startCloning() {
+                this.addToTerminal('Initiating clone via ' + this.cloningConfig.channel + ' for source ' + this.cloningConfig.source + '...');
+                try {
+                    const resp = await fetch(`/api/cloning/start?project_id=${this.activeProject.id}&channel=${this.cloningConfig.channel}&source_info=${this.cloningConfig.source}`, { method: 'POST' });
+                    const data = await resp.json();
+                    this.addToTerminal('[+] Cloning job started: ' + data.job_id);
+                    this.showCloneModal = false;
+                    this.fetchCloningJobs();
+                } catch (error) {
+                    this.addToTerminal('[-] Cloning failed: ' + error);
+                }
+            },
+
+            async fetchCloningJobs() {
+                try {
+                    const resp = await fetch(`/api/cloning/jobs/${this.activeProject.id}`);
+                    this.cloningJobs = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async fetchWebRequests() {
+                try {
+                    const resp = await fetch(`/api/web-testing/requests/${this.activeProject.id}`);
+                    this.webRequests = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async triggerWebScan(url) {
+                this.addToTerminal('Scanning web app: ' + url + '...');
+                try {
+                    const resp = await fetch(`/api/web-testing/scan?url=${url}&project_id=${this.activeProject.id}`, { method: 'POST' });
+                    const data = await resp.json();
+                    this.addToTerminal('[+] Web scan complete. ' + data.findings + ' findings.');
+                } catch (error) { console.error(error); }
+            },
+
+            async fetchPhishingCampaigns() {
+                try {
+                    const resp = await fetch(`/api/phishing/campaigns/${this.activeProject.id}`);
+                    this.phishingCampaigns = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async createPhishingCampaign(name, template) {
+                this.addToTerminal('Creating phishing campaign: ' + name + '...');
+                try {
+                    await fetch(`/api/phishing/campaigns?project_id=${this.activeProject.id}&name=${name}&template=${template}`, { method: 'POST' });
+                    this.fetchPhishingCampaigns();
+                } catch (error) { console.error(error); }
+            },
+
+            async fetchCrackingJobs() {
+                try {
+                    const resp = await fetch(`/api/cracking/jobs/${this.activeProject.id}`);
+                    this.crackingJobs = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async triggerCracking(type, hashes) {
+                this.addToTerminal('Starting cracking job for ' + type + ' hashes...');
+                try {
+                    await fetch(`/api/cracking/jobs?project_id=${this.activeProject.id}&hash_type=${type}&hashes=${hashes}`, { method: 'POST' });
+                    this.fetchCrackingJobs();
+                } catch (error) { console.error(error); }
+            },
+
             async runFullWorkflow() {
                 if (!this.consentGiven) {
                     alert('Please provide authorization consent first.');
@@ -343,6 +455,8 @@
                 this.addToTerminal('Starting FULL AUTOMATION WORKFLOW...');
                 await this.triggerScan();
                 setTimeout(async () => {
+                    // Automatically run bruteforce if a device is found
+                    await this.triggerBruteforce(1, 'ssh');
                     await this.generateReport();
                     this.addToTerminal('[+] Automation complete.');
                 }, 10000);
@@ -422,6 +536,24 @@
             </div>
             <div @click="activeModule = 'console'; initConsole()" :class="activeModule === 'console' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Advanced Console">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2-2v12a2 2 0 00-2 2z"></path></svg>
+            </div>
+            <div @click="activeModule = 'fuzzing'; fetchFuzzingJobs(1)" :class="activeModule === 'fuzzing' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Fuzzing Engine">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+            </div>
+            <div @click="activeModule = 'bruteforce'; fetchBruteforceJobs(1)" :class="activeModule === 'bruteforce' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Bruteforce / Credential Testing">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 00-2 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            </div>
+            <div @click="activeModule = 'cloning'; fetchCloningJobs()" :class="activeModule === 'cloning' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Cloning / Acquisition">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
+            </div>
+            <div @click="activeModule = 'web_testing'; fetchWebRequests()" :class="activeModule === 'web_testing' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Web Testing / Proxy">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9-9c1.657 0 3 4.03 3 9s-1.343 9-3 9m0-18c-1.657 0-3 4.03-3 9s1.343 9 3 9m-9-9a9 9 0 019-9"></path></svg>
+            </div>
+            <div @click="activeModule = 'cracking'; fetchCrackingJobs()" :class="activeModule === 'cracking' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Password Cracking">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+            </div>
+            <div @click="activeModule = 'phishing'; fetchPhishingCampaigns()" :class="activeModule === 'phishing' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Social Engineering">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
             </div>
         </aside>
 
@@ -534,6 +666,124 @@
                             <div class="minimap-mark bg-red-500"></div>
                             <div class="minimap-mark bg-slate-700"></div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Web Testing View -->
+            <div x-show="activeModule === 'web_testing'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-5xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-300">Web Testing & Proxy</h2>
+                        <div class="flex space-x-2">
+                            <button @click="triggerWebScan('http://target-app.local')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold shadow-lg">Run Automated Web Scan</button>
+                            <button @click="await fetch('/api/web-testing/capture?project_id=1&method=GET&url=http://api.internal/v1/users', {method:'POST'}); fetchWebRequests()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-xs font-bold">Capture Sample Request</button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-6">
+                        <div class="bg-dark-900 border border-slate-800 rounded p-4">
+                            <h3 class="text-xs font-bold text-slate-500 uppercase mb-3">Intercepted Requests</h3>
+                            <table class="w-full text-left text-[10px] border-collapse">
+                                <thead class="bg-dark-950 text-slate-500 uppercase">
+                                    <tr>
+                                        <th class="p-2 border border-slate-800">Method</th>
+                                        <th class="p-2 border border-slate-800">URL</th>
+                                        <th class="p-2 border border-slate-800">Status</th>
+                                        <th class="p-2 border border-slate-800">Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="req in webRequests" :key="req.id">
+                                        <tr class="hover:bg-slate-800/50 cursor-pointer">
+                                            <td class="p-2 border border-slate-800 font-bold text-blue-400" x-text="req.method"></td>
+                                            <td class="p-2 border border-slate-800 truncate max-w-xs" x-text="req.url"></td>
+                                            <td class="p-2 border border-slate-800 text-green-500" x-text="req.response_code"></td>
+                                            <td class="p-2 border border-slate-800 text-slate-500" x-text="req.captured_at"></td>
+                                        </tr>
+                                    </template>
+                                    <tr x-show="webRequests.length === 0">
+                                        <td colspan="4" class="p-4 text-center text-slate-600 italic">No intercepted traffic yet. Start the proxy to see requests.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cracking View -->
+            <div x-show="activeModule === 'cracking'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-4xl mx-auto">
+                    <h2 class="text-xl font-bold text-slate-300 mb-6">Password Hash Cracking</h2>
+                    <div class="bg-dark-900 border border-slate-800 p-6 rounded-lg mb-6">
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-[10px] text-slate-500 uppercase font-bold mb-1">Hash Type</label>
+                                <select id="crack-type" class="w-full bg-dark-950 border border-slate-700 rounded p-2 text-xs">
+                                    <option>NTLM</option>
+                                    <option>MD5</option>
+                                    <option>SHA-256</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-500 uppercase font-bold mb-1">Hashes (comma separated)</label>
+                                <input type="text" id="crack-hashes" placeholder="e.g. 5f4dcc3b5aa765d61d8327deb882cf99" class="w-full bg-dark-950 border border-slate-700 rounded p-2 text-xs">
+                            </div>
+                        </div>
+                        <button @click="triggerCracking(document.getElementById('crack-type').value, document.getElementById('crack-hashes').value)" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded shadow-lg shadow-red-900/20">START CRACKING JOB</button>
+                    </div>
+
+                    <div class="space-y-4">
+                        <template x-for="job in crackingJobs" :key="job.id">
+                            <div class="bg-dark-900 border border-slate-800 p-4 rounded">
+                                <div class="flex justify-between items-center mb-2">
+                                    <div class="text-sm font-bold text-red-400" x-text="'Job #' + job.id + ' - ' + job.hash_type"></div>
+                                    <span :class="job.status === 'completed' ? 'text-green-500' : 'text-yellow-500'" class="text-[10px] font-bold uppercase" x-text="job.status"></span>
+                                </div>
+                                <div class="bg-black/50 p-2 rounded mt-2">
+                                    <template x-for="(pass, hash) in (typeof job.results === 'string' ? JSON.parse(job.results) : job.results)" :key="hash">
+                                        <div class="text-[10px] flex justify-between border-b border-slate-800 py-1">
+                                            <span class="text-slate-500 font-mono" x-text="hash"></span>
+                                            <span class="text-green-400 font-bold" x-text="pass"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phishing View -->
+            <div x-show="activeModule === 'phishing'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-4xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-300">Social Engineering Dashboard</h2>
+                        <button @click="createPhishingCampaign('Microsoft 365 Login', 'login_page')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold shadow-lg">New Phishing Campaign</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <template x-for="campaign in phishingCampaigns" :key="campaign.id">
+                            <div class="bg-dark-900 border border-slate-800 p-4 rounded">
+                                <div class="flex justify-between items-center mb-3">
+                                    <h3 class="text-sm font-bold text-slate-200" x-text="campaign.name"></h3>
+                                    <span class="text-[9px] bg-green-900/30 text-green-500 px-2 py-0.5 rounded-full uppercase" x-text="campaign.status"></span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 text-center">
+                                    <div class="bg-dark-950 p-2 rounded">
+                                        <div class="text-xs font-bold text-blue-400" x-text="campaign.clicks"></div>
+                                        <div class="text-[8px] text-slate-500 uppercase">Clicks</div>
+                                    </div>
+                                    <div class="bg-dark-950 p-2 rounded">
+                                        <div class="text-xs font-bold text-red-400" x-text="campaign.submissions"></div>
+                                        <div class="text-[8px] text-slate-500 uppercase">Submissions</div>
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <button @click="activeModule = 'credentials'; fetchCredentials()" class="w-full text-[10px] bg-slate-800 hover:bg-slate-700 py-1 rounded text-slate-300">View Captured Credentials</button>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="phishingCampaigns.length === 0" class="col-span-2 text-center p-8 text-slate-600 italic">No active campaigns. Create one to test the human perimeter.</div>
                     </div>
                 </div>
             </div>
@@ -751,6 +1001,83 @@
                 </div>
             </div>
 
+            <!-- Fuzzing View -->
+            <div x-show="activeModule === 'fuzzing'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-4xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-300">Fuzzing Engine</h2>
+                        <button @click="triggerFuzzing(1)" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded text-xs font-bold shadow-lg">Start New Fuzzing Job</button>
+                    </div>
+                    <div class="space-y-4">
+                        <template x-for="job in fuzzingJobs" :key="job.id">
+                            <div class="bg-dark-900 border border-slate-800 p-4 rounded">
+                                <div class="flex justify-between items-center mb-2">
+                                    <div class="text-sm font-bold text-red-400" x-text="'Job #' + job.id"></div>
+                                    <span :class="job.status === 'completed' ? 'text-green-500' : 'text-yellow-500'" class="text-[10px] font-bold uppercase" x-text="job.status"></span>
+                                </div>
+                                <div class="text-[10px] text-slate-500 mb-2" x-text="'Target Binary ID: ' + job.binary_id + ' | Created: ' + job.created_at"></div>
+                                <div x-show="job.status === 'completed'">
+                                    <button @click="activeModule = 'binary'; activeTab = 'vulnerable'" class="text-blue-400 text-[10px] underline">View findings from this job</button>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="fuzzingJobs.length === 0" class="text-center p-8 text-slate-600 italic">No fuzzing jobs yet. Start a job to find memory corruption vulnerabilities.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bruteforce View -->
+            <div x-show="activeModule === 'bruteforce'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-4xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-300">Bruteforce / Credential Testing</h2>
+                        <div class="flex space-x-2">
+                            <button @click="triggerBruteforce(1, 'ssh')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">SSH Bruteforce</button>
+                            <button @click="triggerBruteforce(1, 'web')" class="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">Web Login Bruteforce</button>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <template x-for="job in bruteforceJobs" :key="job.id">
+                            <div class="bg-dark-900 border border-slate-800 p-4 rounded">
+                                <div class="flex justify-between items-center mb-2">
+                                    <div class="text-sm font-bold text-blue-400" x-text="'Job #' + job.id + ' - ' + job.service.toUpperCase()"></div>
+                                    <span :class="job.status === 'completed' ? 'text-green-500' : 'text-yellow-500'" class="text-[10px] font-bold uppercase" x-text="job.status"></span>
+                                </div>
+                                <div x-show="job.status === 'completed'">
+                                    <button @click="activeModule = 'credentials'; fetchCredentials()" class="text-green-400 text-[10px] underline">View recovered credentials</button>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="bruteforceJobs.length === 0" class="text-center p-8 text-slate-600 italic">No bruteforce jobs yet.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cloning View -->
+            <div x-show="activeModule === 'cloning'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-4xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-300">Cloning / Acquisition</h2>
+                        <button @click="showCloneModal = true" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded text-xs font-bold shadow-lg">New Acquisition</button>
+                    </div>
+                    <div class="space-y-4">
+                        <template x-for="job in cloningJobs" :key="job.id">
+                            <div class="bg-dark-900 border border-slate-800 p-4 rounded">
+                                <div class="flex justify-between items-center mb-2">
+                                    <div class="text-sm font-bold text-purple-400" x-text="'Job #' + job.id + ' - via ' + job.channel.toUpperCase()"></div>
+                                    <span :class="job.status === 'completed' ? 'text-green-500' : 'text-yellow-500'" class="text-[10px] font-bold uppercase" x-text="job.status"></span>
+                                </div>
+                                <div class="text-[10px] text-slate-500" x-text="'Source: ' + job.source_info"></div>
+                                <div x-show="job.status === 'completed'" class="mt-2">
+                                    <button @click="activeModule = 'assets'; fetchAssets()" class="text-blue-400 text-[10px] underline">View cloned artifacts in Asset Manager</button>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="cloningJobs.length === 0" class="text-center p-8 text-slate-600 italic">No cloning jobs yet. Use multiple channels to acquire targets.</div>
+                    </div>
+                </div>
+            </div>
+
             <div x-show="activeModule === 'reports'" class="flex-grow p-6 overflow-y-auto">
                 <div class="w-full max-w-2xl mx-auto">
                     <div class="flex justify-between items-center mb-6">
@@ -853,6 +1180,35 @@
                 </div>
             </div>
         </aside>
+    </div>
+
+    <!-- Clone Modal -->
+    <div x-show="showCloneModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-dark-900 border border-purple-500 max-w-md w-full p-6 rounded-lg shadow-2xl">
+            <h2 class="text-purple-400 font-bold text-lg mb-4 flex items-center">
+                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
+                Clone / Acquire Target
+            </h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-[10px] text-slate-500 uppercase font-bold mb-1">Cloning Channel</label>
+                    <select x-model="cloningConfig.channel" class="w-full bg-dark-950 border border-slate-700 rounded p-2 text-xs text-slate-200">
+                        <option value="network">Network / Wi-Fi</option>
+                        <option value="usb">USB / Serial</option>
+                        <option value="bluetooth">Bluetooth / BLE</option>
+                        <option value="drag_drop">Drag & Drop Artifact</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] text-slate-500 uppercase font-bold mb-1">Source Identifier (IP/MAC/COM)</label>
+                    <input type="text" x-model="cloningConfig.source" placeholder="e.g. 192.168.1.1 or /dev/ttyUSB0" class="w-full bg-dark-950 border border-slate-700 rounded p-2 text-xs text-slate-200">
+                </div>
+            </div>
+            <div class="flex space-x-3 mt-6">
+                <button @click="startCloning()" class="flex-grow bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded">START ACQUISITION</button>
+                <button @click="showCloneModal = false" class="px-4 py-2 text-slate-500 hover:text-slate-300">CANCEL</button>
+            </div>
+        </div>
     </div>
 
     <!-- Status Bar -->

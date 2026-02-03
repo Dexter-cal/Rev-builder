@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from app.api import projects, devices, analysis, payloads, recon, credentials, reports, exploit_db, exploit_chains, diffing, assets, firmware, source, console
+from app.api import projects, devices, analysis, payloads, recon, credentials, reports, exploit_db, exploit_chains, diffing, assets, firmware, source, console, fuzzing, bruteforce, cloning, web_testing, phishing, cracking
 import os
 
 app = FastAPI(title="Offensive Security Platform")
@@ -29,6 +29,12 @@ app.include_router(assets.router, prefix="/api/assets", tags=["assets"])
 app.include_router(firmware.router, prefix="/api/firmware", tags=["firmware"])
 app.include_router(source.router, prefix="/api/source", tags=["source"])
 app.include_router(console.router, prefix="/api/console", tags=["console"])
+app.include_router(fuzzing.router, prefix="/api/fuzzing", tags=["fuzzing"])
+app.include_router(bruteforce.router, prefix="/api/bruteforce", tags=["bruteforce"])
+app.include_router(cloning.router, prefix="/api/cloning", tags=["cloning"])
+app.include_router(web_testing.router, prefix="/api/web-testing", tags=["web-testing"])
+app.include_router(phishing.router, prefix="/api/phishing", tags=["phishing"])
+app.include_router(cracking.router, prefix="/api/cracking", tags=["cracking"])
 
 @app.get("/")
 async def read_index(request: Request):

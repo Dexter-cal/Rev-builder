@@ -6,6 +6,7 @@ from typing import List
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
 from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_ARCH_ARM, CS_MODE_ARM
+import hashlib
 
 class AnalysisService:
     @staticmethod
@@ -125,11 +126,15 @@ class AnalysisService:
                             if "sub rsp" in assembly and "mov rax, qword ptr [rbp - 8]" not in assembly and vuln_type == "buffer_overflow":
                                 danger_score += 10
 
+                            # Generate a hash for the function code
+                            func_hash = hashlib.sha256(code).hexdigest()
+
                             func = models.Function(
                                 binary_id=binary.id,
                                 name=name,
                                 offset=hex(offset),
                                 size=size,
+                                hash=func_hash,
                                 assembly_snippet=assembly if assembly else "Disassembly not available",
                                 python_like=f"# Decompiled (pseudo)\ndef {name}():\n    # ... logic ...\n    pass",
                                 danger_score=danger_score,
@@ -192,7 +197,9 @@ class AnalysisService:
         ]
 
         for func_data in functions_data:
-            function = models.Function(binary_id=binary.id, **func_data)
+            # Add a simulated hash for simulated functions
+            sim_hash = hashlib.sha256(func_data['assembly_snippet'].encode()).hexdigest()
+            function = models.Function(binary_id=binary.id, hash=sim_hash, **func_data)
             db.add(function)
 
         db.commit()

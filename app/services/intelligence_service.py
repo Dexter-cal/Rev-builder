@@ -1,10 +1,12 @@
 from sqlalchemy.orm import Session
 from app.models import models
 from typing import List, Dict
+from app.services.zero_click_service import ZeroClickService
 
 class IntelligenceService:
     def __init__(self, db: Session):
         self.db = db
+        self.zero_click_service = ZeroClickService(db)
 
     def get_suggestions(self, finding_id: int) -> List[Dict]:
         finding = self.db.query(models.Finding).filter(models.Finding.id == finding_id).first()
@@ -70,6 +72,11 @@ class IntelligenceService:
                 "priority": "critical",
                 "action_type": "build_chain"
             })
+
+        # 3. Zero-click suggestions
+        if func.is_zero_click_candidate:
+            zc_suggestions = self.zero_click_service.get_zero_click_suggestions(func)
+            suggestions.extend(zc_suggestions)
 
         return suggestions
 

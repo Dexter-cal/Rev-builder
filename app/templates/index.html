@@ -35,7 +35,8 @@
     document.addEventListener('alpine:init', () => {
         Alpine.data('app', () => ({
             activeModule: 'dashboard',
-            activeProject: { id: 1, name: 'Eagle Eye' },
+            activeProject: { id: 1, name: 'Eagle Eye', zero_click_enabled: false },
+            zeroClickMode: false,
             isDragging: false,
             focusMode: false,
             terminalOutput: [],
@@ -67,6 +68,7 @@
             weaponizationJobs: [],
             emulationTraces: [],
             compiledBinaries: [],
+            wordlists: [],
             snippets: [],
             selectedSnippet: null,
             codeLabSource: '#include <stdio.h>\n\nint main() {\n    printf("Offsec Tool v1.0\\n");\n    return 0;\n}',
@@ -164,6 +166,11 @@
                     this.activeModule = 'binary';
                     this.addToTerminal('Loaded binary: ' + file.name);
                     this.addToTerminal('Extracted ' + (result.functions ? result.functions.length : 0) + ' functions.');
+
+                    if (this.zeroClickMode) {
+                        this.addToTerminal('[*] Zero-Click Discovery Mode active. Scanning for automatic entry points...');
+                        await this.runZeroClickDiscovery(result.binary_id);
+                    }
 
                     this.explorer[0].children.push({ name: file.name, type: 'file', vuln: (result.functions && result.functions.length > 0) });
                     this.activeTab = file.name;
@@ -477,6 +484,23 @@
                 } catch (error) { console.error(error); }
             },
 
+            async fetchWordlists() {
+                try {
+                    const resp = await fetch(`/api/wordlists/?project_id=${this.activeProject.id}`);
+                    this.wordlists = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async generateAIWordlist(category, context) {
+                this.addToTerminal(`Generating AI ${category} wordlist for context: ${context}...`);
+                try {
+                    const resp = await fetch(`/api/wordlists/generate?project_id=${this.activeProject.id}&category=${category}&context=${encodeURIComponent(context)}`, { method: 'POST' });
+                    const data = await resp.json();
+                    this.addToTerminal(`[+] AI wordlist generated: ${data.name}`);
+                    this.fetchWordlists();
+                } catch (error) { console.error(error); }
+            },
+
             async fetchAIModels() {
                 try {
                     const resp = await fetch('/api/settings/ai-models');
@@ -634,6 +658,22 @@
                 }
             },
 
+            async toggleZeroClick() {
+                this.zeroClickMode = !this.zeroClickMode;
+                this.addToTerminal(this.zeroClickMode ? '[+] Zero-Click Discovery Mode ENABLED.' : '[-] Zero-Click Discovery Mode DISABLED.');
+            },
+
+            async runZeroClickDiscovery(binaryId) {
+                try {
+                    const resp = await fetch(`/api/intelligence/zero-click/discover/${binaryId}`, { method: 'POST' });
+                    const candidates = await resp.json();
+                    if (candidates.length > 0) {
+                        this.addToTerminal(`[!] Found ${candidates.length} potential zero-click entry points!`);
+                        // Highlight them in the UI logic here if needed
+                    }
+                } catch (error) { console.error(error); }
+            },
+
             async runAISmartAnalysis() {
                 this.addToTerminal('Running AI-powered smarter analysis...');
                 const modelId = this.aiModels.length > 0 ? this.aiModels[0].id : 1;
@@ -712,7 +752,7 @@
 
     <div class="flex-grow flex overflow-hidden">
         <!-- Activity Bar -->
-        <aside class="w-12 bg-dark-900 border-r border-slate-800 flex flex-col items-center py-4 space-y-4">
+        <aside class="w-12 bg-dark-900 border-r border-slate-800 flex flex-col items-center py-4 space-y-4 overflow-y-auto overflow-x-hidden scrollbar-hide">
             <div @click="activeModule = 'explorer'" :class="activeModule === 'explorer' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Explorer">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
             </div>
@@ -761,6 +801,9 @@
             <div @click="activeModule = 'phishing'; fetchPhishingCampaigns()" :class="activeModule === 'phishing' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Social Engineering">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
             </div>
+            <div @click="activeModule = 'wordlists'; fetchWordlists()" :class="activeModule === 'wordlists' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Wordlist Manager">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+            </div>
             <div @click="activeModule = 'hardware'; fetchHardwareJobs()" :class="activeModule === 'hardware' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Hardware Lab">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
             </div>
@@ -770,7 +813,7 @@
             <div @click="activeModule = 'docs'" :class="activeModule === 'docs' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Learning & Knowledge Base">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
             </div>
-            <div @click="activeModule = 'settings'; fetchAIModels()" :class="activeModule === 'settings' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300 mt-auto" title="Settings">
+            <div @click="activeModule = 'settings'; fetchAIModels()" :class="activeModule === 'settings' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Settings">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
             </div>
         </aside>
@@ -825,6 +868,13 @@
                         <span>Focus on exploitable</span>
                     </div>
                     <span class="hover:text-slate-200 cursor-pointer">Compare with Source</span>
+                    <div class="h-4 w-px bg-slate-800"></div>
+                    <div class="flex items-center space-x-2 cursor-pointer hover:text-slate-200" @click="toggleZeroClick()">
+                        <div :class="zeroClickMode ? 'bg-purple-500' : 'bg-slate-700'" class="w-6 h-3 rounded-full relative transition-colors">
+                            <div :class="zeroClickMode ? 'translate-x-3' : 'translate-x-0'" class="w-3 h-3 bg-white rounded-full transition-transform"></div>
+                        </div>
+                        <span class="font-bold text-purple-400">Zero-Click Mode</span>
+                    </div>
                 </div>
                 <div class="flex items-center space-x-4">
                     <button @click="runFullWorkflow()" class="bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/50 px-3 py-1 rounded flex items-center space-x-2">
@@ -866,6 +916,9 @@
                                 <div x-show="!focusMode || item.vuln" class="flex group hover:bg-slate-800/50 rounded" :class="item.vuln ? 'bg-red-900/10' : ''">
                                     <span class="w-8 text-slate-700 text-right pr-2 select-none" x-text="item.line"></span>
                                     <span class="flex-grow" :class="item.vuln ? 'text-red-400 font-bold' : 'text-blue-300'" x-text="item.text"></span>
+                                    <template x-if="item.text.includes('parse') || item.text.includes('decode') || item.text.includes('handle')">
+                                        <span x-show="zeroClickMode" class="text-[8px] bg-purple-900 text-purple-200 px-1 rounded mr-2 animate-pulse">ZERO-CLICK CANDIDATE</span>
+                                    </template>
                                     <template x-if="item.vuln">
                                         <div class="flex space-x-1 ml-2">
                                             <button @click="tryToBreak()" class="bg-red-600 hover:bg-red-500 text-white px-2 py-0 rounded text-[9px] font-bold">Break</button>
@@ -1374,7 +1427,7 @@
                                         </td>
                                         <td class="p-3 border border-slate-800 text-slate-500" x-text="session.last_seen || 'Never'"></td>
                                         <td class="p-3 border border-slate-800 text-center">
-                                            <button class="text-red-500 hover:text-red-400 font-bold">INTERACT</button>
+                                            <button @click="activeModule = 'console'; initConsole(); consolePrompt = session.type + ' > '; consoleHistory.push({type:'info', text: 'Attached to session #' + session.id})" class="text-red-500 hover:text-red-400 font-bold uppercase">Interact</button>
                                         </td>
                                     </tr>
                                 </template>
@@ -1433,30 +1486,172 @@
                 </div>
             </div>
 
-            <!-- Reports View -->
-            <!-- Exploit Chains View -->
-            <div x-show="activeModule === 'chains'" class="flex-grow p-6 overflow-y-auto">
-                <div class="w-full max-w-4xl mx-auto">
-                    <h2 class="text-xl font-bold text-slate-300 mb-4">Multi-Step Exploit Chains</h2>
-                    <div class="grid grid-cols-1 gap-4">
-                        <template x-for="chain in exploitChains" :key="chain.id">
-                            <div class="bg-dark-900 border border-slate-800 p-4 rounded">
-                                <h3 class="text-blue-400 font-bold mb-2" x-text="chain.name"></h3>
-                                <div class="space-y-2">
-                                    <template x-for="step in (typeof chain.steps === 'string' ? JSON.parse(chain.steps) : chain.steps)" :key="step.step">
-                                        <div class="flex items-center space-x-3 text-xs">
-                                            <span class="bg-slate-800 text-slate-400 w-5 h-5 rounded-full flex items-center justify-center" x-text="step.step"></span>
-                                            <span class="font-bold text-slate-200" x-text="step.action"></span>
-                                            <span class="text-slate-500 italic" x-text="step.description"></span>
-                                        </div>
-                                    </template>
+            <!-- Wordlist Manager View -->
+            <div x-show="activeModule === 'wordlists'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-5xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-300">Wordlist Manager</h2>
+                        <button @click="generateAIWordlist('passwords', 'company internal policy')" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded text-xs font-bold shadow-lg">Generate AI Wordlist</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <template x-for="wl in wordlists" :key="wl.id">
+                            <div class="bg-dark-900 border border-slate-800 rounded-lg p-4 hover:border-slate-600 transition-colors group">
+                                <div class="flex justify-between items-start mb-3">
+                                    <div>
+                                        <h3 class="text-sm font-bold text-slate-200" x-text="wl.name"></h3>
+                                        <span class="text-[9px] text-slate-500 uppercase font-bold" x-text="wl.category"></span>
+                                    </div>
+                                    <span x-show="wl.is_ai_generated" class="bg-purple-900/30 text-purple-400 text-[8px] px-1.5 py-0.5 rounded font-bold">AI</span>
                                 </div>
-                                <div class="mt-4 flex justify-end">
-                                    <button class="bg-red-600 hover:bg-red-500 text-white text-[10px] px-3 py-1 rounded font-bold uppercase">Execute Chain</button>
+                                <div class="bg-black/40 p-2 rounded text-[10px] font-mono text-slate-400 h-32 overflow-y-auto border border-slate-800 mb-3">
+                                    <pre x-text="wl.content"></pre>
+                                </div>
+                                <div class="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button class="text-[10px] text-blue-400 hover:underline">Download</button>
+                                    <button class="text-[10px] text-red-500 hover:underline">Delete</button>
                                 </div>
                             </div>
                         </template>
-                        <div x-show="exploitChains.length === 0" class="text-center p-8 text-slate-600 italic">No exploit chains built yet. Select a finding to suggest a chain.</div>
+                        <div @click="addToTerminal('Wordlist upload not implemented in this demo.')" class="border-2 border-dashed border-slate-800 rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800/30 transition-colors">
+                            <svg class="w-8 h-8 text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            <span class="text-[10px] font-bold text-slate-500 uppercase">Upload Custom Wordlist</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network Map View -->
+            <div x-show="activeTab === 'Network Map'" class="flex-grow bg-dark-950 p-8 flex flex-col items-center justify-center">
+                <div class="relative w-full max-w-3xl h-[500px] border border-slate-800 bg-black/40 rounded-2xl overflow-hidden shadow-2xl">
+                    <div class="absolute top-4 left-4 bg-dark-900/80 border border-slate-700 px-3 py-1.5 rounded text-[10px] font-bold text-slate-400 flex items-center">
+                        <span class="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
+                        Scanning Network Assets...
+                    </div>
+                    <!-- Simplified Visualizer -->
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <!-- Router Node -->
+                        <div class="relative group cursor-pointer" @click="addToTerminal('Router: 192.168.1.1 (Targeted)')">
+                            <div class="w-16 h-16 bg-red-600/20 border-2 border-red-500 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(239,68,68,0.3)] animate-pulse">
+                                <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071a9.5 9.5 0 0113.436 0m-17.678-4.243a15.5 15.5 0 0121.92 0"></path></svg>
+                            </div>
+                            <div class="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-red-400 whitespace-nowrap uppercase">Edge Gateway</div>
+                        </div>
+
+                        <!-- Branches -->
+                        <div class="absolute w-px h-32 bg-gradient-to-t from-blue-500/50 to-red-500/50 -translate-y-24"></div>
+                        <div class="absolute w-px h-32 bg-gradient-to-b from-blue-500/50 to-red-500/50 translate-y-24"></div>
+                        <div class="absolute h-px w-48 bg-gradient-to-r from-red-500/50 to-blue-500/50 translate-x-32"></div>
+
+                        <!-- Client Node 1 -->
+                        <div class="absolute top-24 -translate-y-12 translate-x-0 bg-dark-900 border border-blue-500/50 p-2 rounded flex items-center space-x-2 shadow-lg">
+                            <div class="w-6 h-6 bg-blue-500/20 rounded flex items-center justify-center">
+                                <svg class="w-3 h-3 text-blue-400" fill="currentColor" viewBox="0 0 20 20"><path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2h-2.22l.11.34.45 1.32A.5.5 0 0111 17H9a.5.5 0 01-.34-.66l.45-1.32.11-.34H5a2 2 0 01-2-2V5z"></path></svg>
+                            </div>
+                            <div class="text-[9px]">
+                                <div class="font-bold text-slate-200">Workstation-01</div>
+                                <div class="text-slate-500">192.168.1.15</div>
+                            </div>
+                        </div>
+
+                        <!-- Client Node 2 -->
+                        <div class="absolute bottom-24 translate-y-12 translate-x-0 bg-dark-900 border border-green-500/50 p-2 rounded flex items-center space-x-2 shadow-lg">
+                            <div class="w-6 h-6 bg-green-500/20 rounded flex items-center justify-center">
+                                <svg class="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path d="M2 3a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1H3a1 1 0 01-1-1V3zm0 5a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1H3a1 1 0 01-1-1V8zm5-5a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1H8a1 1 0 01-1-1V3zm0 5a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1H8a1 1 0 01-1-1V8zM2 13a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1H3a1 1 0 01-1-1v-2zm5 0a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1H8a1 1 0 01-1-1v-2zm5-10a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1h-2a1 1 0 01-1-1V3zm0 5a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1h-2a1 1 0 01-1-1V8zm5-5a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1h-2a1 1 0 01-1-1V3zm0 5a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1h-2a1 1 0 01-1-1V8z"></path></svg>
+                            </div>
+                            <div class="text-[9px]">
+                                <div class="font-bold text-slate-200">Database-Server</div>
+                                <div class="text-slate-500">192.168.1.102</div>
+                            </div>
+                        </div>
+
+                        <!-- Client Node 3 (Hidden until hover) -->
+                        <div class="absolute right-32 bg-dark-900 border border-yellow-500/50 p-2 rounded flex items-center space-x-2 shadow-lg">
+                            <div class="w-6 h-6 bg-yellow-500/20 rounded flex items-center justify-center">
+                                <svg class="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"></path></svg>
+                            </div>
+                            <div class="text-[9px]">
+                                <div class="font-bold text-slate-200">IoT-Sensor</div>
+                                <div class="text-slate-500">192.168.1.201</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <canvas id="network-canvas" class="absolute inset-0 pointer-events-none"></canvas>
+                </div>
+                <div class="mt-6 text-center">
+                    <button @click="addToTerminal('Pivoting to internal segment via workstation-01...')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-6 py-2 rounded-lg text-xs font-bold uppercase tracking-widest border border-slate-700">Explore Adjacent Networks</button>
+                </div>
+            </div>
+
+            <!-- Exploit Chains View -->
+            <div x-show="activeModule === 'chains'" class="flex-grow p-6 overflow-y-auto">
+                <div class="w-full max-w-5xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-300">Exploit Chain Builder</h2>
+                        <button @click="addToTerminal('Intelligent chain builder active. Analyzing findings for logical links...')" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded text-xs font-bold shadow-lg">New Intelligent Chain</button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- Chain Library -->
+                        <div class="md:col-span-2 space-y-4">
+                            <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Stored Chains</h3>
+                            <template x-for="chain in exploitChains" :key="chain.id">
+                                <div class="bg-dark-900 border border-slate-800 p-5 rounded-xl hover:border-red-500/40 transition-all">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h3 class="text-blue-400 font-bold" x-text="chain.name"></h3>
+                                        <span class="text-[9px] bg-red-900/30 text-red-500 px-2 py-0.5 rounded font-bold uppercase">Ready</span>
+                                    </div>
+                                    <div class="space-y-4 relative">
+                                        <div class="absolute left-2.5 top-2 bottom-2 w-px bg-slate-800"></div>
+                                        <template x-for="step in (typeof chain.steps === 'string' ? JSON.parse(chain.steps) : chain.steps)" :key="step.step">
+                                            <div class="flex items-start space-x-4 relative z-10">
+                                                <span class="bg-slate-800 text-blue-400 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border border-blue-900/50" x-text="step.step"></span>
+                                                <div>
+                                                    <div class="text-[11px] font-bold text-slate-200" x-text="step.action"></div>
+                                                    <div class="text-[9px] text-slate-500 italic mt-0.5" x-text="step.description"></div>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <div class="mt-6 flex justify-end space-x-3">
+                                        <button class="text-[10px] text-slate-400 hover:text-white uppercase font-bold">Edit</button>
+                                        <button class="bg-red-600 hover:bg-red-500 text-white text-[10px] px-4 py-1.5 rounded font-bold uppercase tracking-wider">Execute Chain</button>
+                                    </div>
+                                </div>
+                            </template>
+                            <div x-show="exploitChains.length === 0" class="text-center p-12 bg-dark-900/50 border border-dashed border-slate-800 rounded-xl">
+                                <p class="text-slate-600 italic text-sm">No exploit chains built yet.</p>
+                                <button @click="buildChain([1, 2])" class="mt-4 text-blue-400 text-xs font-bold hover:underline">Click to suggest a chain from findings</button>
+                            </div>
+                        </div>
+
+                        <!-- Sidebar for Building -->
+                        <div class="bg-dark-900 border border-slate-800 rounded-xl p-5 h-fit">
+                            <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Chain Insights</h3>
+                            <div class="space-y-4">
+                                <div class="bg-blue-900/10 border border-blue-500/20 p-3 rounded">
+                                    <h4 class="text-blue-400 text-[10px] font-bold uppercase mb-1">AI Recommendation</h4>
+                                    <p class="text-[9px] text-slate-400 leading-relaxed">Based on your findings, I suggest chaining the **Path Traversal** on `config_worker` with the **Privilege Escalation** in `system_monitor`.</p>
+                                </div>
+                                <div class="border-t border-slate-800 pt-4">
+                                    <h4 class="text-slate-500 text-[9px] font-bold uppercase mb-2">Available Stages</h4>
+                                    <div class="space-y-1">
+                                        <div class="flex items-center justify-between p-1.5 hover:bg-slate-800 rounded cursor-pointer">
+                                            <span class="text-[10px] text-slate-300">Auth Bypass</span>
+                                            <svg class="w-3 h-3 text-slate-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"></path></svg>
+                                        </div>
+                                        <div class="flex items-center justify-between p-1.5 hover:bg-slate-800 rounded cursor-pointer">
+                                            <span class="text-[10px] text-slate-300">Memory Leak</span>
+                                            <svg class="w-3 h-3 text-slate-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"></path></svg>
+                                        </div>
+                                        <div class="flex items-center justify-between p-1.5 hover:bg-slate-800 rounded cursor-pointer">
+                                            <span class="text-[10px] text-slate-300">Persistence</span>
+                                            <svg class="w-3 h-3 text-slate-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"></path></svg>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1674,7 +1869,8 @@
                         <svg class="w-4 h-4 text-purple-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                         <h4 class="text-purple-400 text-xs font-bold uppercase">Exploit Strategy</h4>
                     </div>
-                    <p class="text-[11px] leading-relaxed text-slate-300 italic">"The strcpy at 0x401215 is vulnerable to a classic stack overflow. I recommend using a ROP chain to bypass DEP/NX. I can generate a Python payload for you."</p>
+                    <p x-show="!zeroClickMode" class="text-[11px] leading-relaxed text-slate-300 italic">"The strcpy at 0x401215 is vulnerable to a classic stack overflow. I recommend using a ROP chain to bypass DEP/NX. I can generate a Python payload for you."</p>
+                    <p x-show="zeroClickMode" class="text-[11px] leading-relaxed text-purple-300 italic">"Zero-Click Mode is active. I've identified 'handle_notification' as a primary entry point. A heap overflow here would trigger RCE automatically on lock screen render. Testing with malformed image payloads..."</p>
                     <div class="flex space-x-2 mt-3">
                         <button @click="tryToBreak()" class="flex-grow bg-purple-600 hover:bg-purple-700 text-white text-[10px] py-1.5 rounded font-bold uppercase tracking-wider">Generate & Run</button>
                         <button @click="teasePayloads(1); fetchSuggestions(1)" class="px-3 bg-yellow-600 hover:bg-yellow-700 text-white text-[10px] py-1.5 rounded font-bold uppercase">Analyze</button>

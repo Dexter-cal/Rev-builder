@@ -42,6 +42,7 @@ class Project(Base):
     end_date = Column(DateTime)
     status = Column(String)  # planning, active, completed
     authorized_targets = Column(JSON)  # Array of IPs/domains/devices
+    zero_click_enabled = Column(Boolean, default=False)
     notes = Column(Text)
 
     devices = relationship("Device", back_populates="project")
@@ -114,6 +115,8 @@ class Function(Base):
     hash = Column(String) # SHA-256 of function body
     danger_score = Column(Integer)  # 0-100
     vuln_type = Column(String)
+    is_zero_click_candidate = Column(Boolean, default=False)
+    surface_type = Column(String) # messaging, notification, background_service, media_parser
     assembly_snippet = Column(Text)
     python_like = Column(Text)
     notes = Column(Text)
@@ -578,3 +581,13 @@ class VulnerabilityReference(Base):
     source = relationship("ExternalSource", back_populates="references")
     findings = relationship("Finding", secondary=finding_references, back_populates="references")
     patterns = relationship("Pattern", secondary=pattern_references, back_populates="references")
+
+class Wordlist(Base):
+    __tablename__ = "wordlists"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    content = Column(Text) # The actual wordlist items
+    category = Column(String) # passwords, usernames, subdomains, etc.
+    is_ai_generated = Column(Boolean, default=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())

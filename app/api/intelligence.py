@@ -23,3 +23,15 @@ def analyze_binary(binary_id: int, db: Session = Depends(get_db)):
     service = IntelligenceService(db)
     protections = service.analyze_binary_protections(binary_id)
     return {"binary_id": binary_id, "protections": protections}
+
+@router.post("/zero-click/discover/{binary_id}")
+def discover_zero_click(binary_id: int, db: Session = Depends(get_db)):
+    service = IntelligenceService(db)
+    candidates = service.zero_click_service.discover_candidates(binary_id)
+    return candidates
+
+@router.get("/zero-click/template/{surface_type}")
+def get_zero_click_template(surface_type: str, db: Session = Depends(get_db)):
+    service = IntelligenceService(db)
+    template = service.zero_click_service.generate_zero_click_payload_template(surface_type)
+    return {"template": template}

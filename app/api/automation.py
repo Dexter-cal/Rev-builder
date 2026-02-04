@@ -1,26 +1,16 @@
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.database.session import get_db
-from app.models import models
+from app.services.automation_service import AutomationService
 
 router = APIRouter()
 
-@router.post("/trigger")
-def trigger_automation(event_type: str, context: dict = Body(...), db: Session = Depends(get_db)):
-    # Simulated automation engine
-    # In a real tool, this would look up scripts in the DB and run them
-    logs = [f"Automation triggered by event: {event_type}"]
+@router.get("/triggers/{project_id}")
+def list_triggers(project_id: int, db: Session = Depends(get_db)):
+    service = AutomationService(db)
+    return service.list_triggers(project_id)
 
-    if event_type == "new_finding":
-        logs.append(f"Auto-analyzing finding #{context.get('finding_id')} with default AI model...")
-        logs.append("[+] Automation: AI analysis requested and stored.")
-
-    return {"status": "success", "logs": logs}
-
-@router.get("/rules")
-def list_rules(db: Session = Depends(get_db)):
-    # Placeholder for automation rules
-    return [
-        {"id": 1, "event": "new_finding", "action": "ai_analyze", "enabled": True},
-        {"id": 2, "event": "new_device", "action": "nmap_scan", "enabled": False}
-    ]
+@router.post("/pipeline/run")
+def run_pipeline(project_id: int, name: str, db: Session = Depends(get_db)):
+    service = AutomationService(db)
+    return service.run_pipeline(project_id, name)

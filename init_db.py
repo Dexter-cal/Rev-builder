@@ -2,7 +2,7 @@ import datetime
 import json
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models.models import Base, Project, Device, Binary, Function, Finding, ExploitChain, Session, AIModel, Wordlist, Payload, Variant, Credential, AttackSurface, HardwareInterface, FirmwareImage, FirmwareAnalysis, RecompilationJob, PayloadSuccessRate, InjectionSnippet
+from app.models.models import Base, Project, Device, Binary, Function, Finding, ExploitChain, Session, AIModel, Wordlist, Payload, Variant, Credential, AttackSurface, HardwareInterface, FirmwareImage, FirmwareAnalysis, RecompilationJob, PayloadSuccessRate, InjectionSnippet, Playbook, ProjectCollaborator, FunctionCall
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -139,6 +139,31 @@ def seed():
         InjectionSnippet(category="FormatStr", name="Stack Leak", content="%x %x %x %x %x %x %x %x", description="Leak stack values using printf vuln", platform="c")
     ]
     db.add_all(snips)
+    db.commit()
+
+    # 16. Playbooks
+    pb1 = Playbook(name="Standard Firmware Audit", description="Extract filesystem, check for default credentials, and scan binaries for overflows.", category="Firmware", workflow_data={"steps": ["Extract", "Firmwalker", "Symbol Analysis"]})
+    db.add(pb1)
+    db.commit()
+
+    # 17. Collaborators
+    c1 = ProjectCollaborator(project_id=p1.id, user_id=1, role="analyst", status="online")
+    db.add(c1)
+    db.commit()
+
+    # 18. Function Calls (for Visual Code Nodes)
+    f2 = Function(
+        binary_id=b1.id, name="validate_user", offset="0x401300", size=128, danger_score=20,
+        assembly_snippet="0x401300: push rbp\n0x401301: mov rbp, rsp\n0x401308: ret",
+        python_like="def validate_user():\n    return True"
+    )
+    db.add(f2)
+    db.commit()
+    db.refresh(f2)
+
+    fc1 = FunctionCall(caller_id=f1.id, callee_id=f2.id, callee_name="validate_user", offset="0x401220")
+    fc2 = FunctionCall(caller_id=f2.id, callee_name="strcmp", offset="0x401305")
+    db.add_all([fc1, fc2])
     db.commit()
 
     db.close()

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from app.api import projects, devices, analysis, payloads, recon, credentials, reports, exploit_db, exploit_chains, diffing, assets, firmware, source, console, fuzzing, bruteforce, cloning, web_testing, phishing, cracking, weaponization, emulation, hardware, settings, compiler, ai_engine, snippets, automation, intelligence, wordlists, injection
+from app.api import projects, devices, analysis, payloads, recon, credentials, reports, exploit_db, exploit_chains, diffing, assets, firmware, source, console, fuzzing, bruteforce, cloning, web_testing, phishing, cracking, weaponization, emulation, hardware, settings, compiler, ai_engine, snippets, automation, intelligence, wordlists, injection, collaboration, playbooks, visual_code
 import os
 
 app = FastAPI(title="Offensive Security Platform")
@@ -46,6 +46,10 @@ app.include_router(automation.router, prefix="/api/automation", tags=["automatio
 app.include_router(intelligence.router, prefix="/api/intelligence", tags=["intelligence"])
 app.include_router(wordlists.router, prefix="/api/wordlists", tags=["wordlists"])
 app.include_router(injection.router, prefix="/api/injection", tags=["injection"])
+app.include_router(collaboration.router, prefix="/api/collaboration", tags=["collaboration"])
+app.include_router(automation.router, prefix="/api/automation", tags=["automation"])
+app.include_router(playbooks.router, prefix="/api/playbooks", tags=["playbooks"])
+app.include_router(visual_code.router, prefix="/api/visual-code", tags=["visual-code"])
 
 @app.get("/")
 async def read_index(request: Request):

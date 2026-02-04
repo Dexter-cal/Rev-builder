@@ -575,6 +575,76 @@ class InjectionSnippet(Base):
     platform = Column(String)
     created_at = Column(DateTime, server_default=func.now())
 
+class FindingScore(Base):
+    __tablename__ = "finding_scores"
+    id = Column(Integer, primary_key=True)
+    finding_id = Column(Integer, ForeignKey("findings.id"))
+    exploitability = Column(Float) # 0-1
+    impact = Column(Float) # 0-1
+    composite_score = Column(Float)
+    priority = Column(String) # critical, high, medium, low
+    notes = Column(Text)
+
+class ProjectCollaborator(Base):
+    __tablename__ = "project_collaborators"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    role = Column(String) # owner, analyst, viewer
+    status = Column(String) # online, offline
+
+class NodeComment(Base):
+    __tablename__ = "node_comments"
+    id = Column(Integer, primary_key=True)
+    node_id = Column(Integer, ForeignKey("workflow_nodes.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(Text)
+    timestamp = Column(DateTime, server_default=func.now())
+
+class AutomationTrigger(Base):
+    __tablename__ = "automation_triggers"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    event_type = Column(String) # on_new_target, on_finding, on_payload_success
+    action_type = Column(String) # scan, fuzz, report, notify
+    config = Column(JSON)
+    enabled = Column(Boolean, default=True)
+
+class Playbook(Base):
+    __tablename__ = "playbooks"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    description = Column(Text)
+    workflow_data = Column(JSON) # Serialized nodes and edges
+    category = Column(String) # Firmware, Web, Hardware, Network
+    is_community = Column(Boolean, default=False)
+
+class ProjectCommit(Base):
+    __tablename__ = "project_commits"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    message = Column(String)
+    diff_data = Column(JSON)
+    timestamp = Column(DateTime, server_default=func.now())
+
+class ThreatModel(Base):
+    __tablename__ = "threat_models"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    graph_data = Column(JSON) # Assets, threats, mitigations
+    risk_summary = Column(Text)
+    last_updated = Column(DateTime, server_default=func.now())
+
+class FunctionCall(Base):
+    __tablename__ = "function_calls"
+    id = Column(Integer, primary_key=True)
+    caller_id = Column(Integer, ForeignKey("functions.id"))
+    callee_id = Column(Integer, ForeignKey("functions.id"), nullable=True)
+    callee_name = Column(String) # For external/unresolved calls
+    offset = Column(String) # Offset of the call instruction
+    is_indirect = Column(Boolean, default=False)
+
 class SystemConfig(Base):
     __tablename__ = "system_configs"
     id = Column(Integer, primary_key=True)

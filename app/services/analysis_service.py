@@ -129,6 +129,19 @@ class AnalysisService:
                             # Generate a hash for the function code
                             func_hash = hashlib.sha256(code).hexdigest()
 
+                            # Extract calls from disassembly
+                            calls = []
+                            for i in md.disasm(code, offset):
+                                if i.mnemonic == 'call':
+                                    target = i.op_str
+                                    # Try to resolve hex target
+                                    is_indirect = target.startswith('[')
+                                    calls.append({
+                                        "callee_name": target,
+                                        "offset": hex(i.address),
+                                        "is_indirect": is_indirect
+                                    })
+
                             func = models.Function(
                                 binary_id=binary.id,
                                 name=name,
@@ -141,6 +154,34 @@ class AnalysisService:
                                 vuln_type=vuln_type
                             )
                             db.add(func)
+                            db.flush() # Get the function ID
+
+                            # Save calls
+                            for c_data in calls:
+                                call_obj = models.FunctionCall(
+                                    caller_id=func.id,
+                                    callee_name=c_data["callee_name"],
+                                    offset=c_data["offset"],
+                                    is_indirect=c_data["is_indirect"]
+                                )
+                                db.add(call_obj)
+
+                # Resolve calls within the binary
+                binary_funcs = db.query(models.Function).filter(models.Function.binary_id == binary.id).all()
+                name_map = {f.name: f.id for f in binary_funcs}
+                offset_map = {f.offset: f.id for f in binary_funcs}
+
+                binary_calls = db.query(models.FunctionCall).join(models.Function, models.FunctionCall.caller_id == models.Function.id).filter(models.Function.binary_id == binary.id).all()
+                for call in binary_calls:
+                    if call.callee_name in name_map:
+                        call.callee_id = name_map[call.callee_name]
+                    elif call.callee_name.startswith('0x'):
+                        # Normalize hex for matching
+                        try:
+                            norm_hex = hex(int(call.callee_name, 16))
+                            if norm_hex in offset_map:
+                                call.callee_id = offset_map[norm_hex]
+                        except: pass
 
                 # Also check dynamic symbols for imports
                 dynsym = elffile.get_section_by_name('.dynsym')

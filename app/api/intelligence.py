@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.services.intelligence_service import IntelligenceService
+from app.services.prioritization_service import PrioritizationService
 from typing import List
 
 router = APIRouter()
@@ -10,6 +11,16 @@ router = APIRouter()
 def get_suggestions(finding_id: int, db: Session = Depends(get_db)):
     service = IntelligenceService(db)
     return service.get_suggestions(finding_id)
+
+@router.post("/score/{finding_id}")
+def score_finding(finding_id: int, db: Session = Depends(get_db)):
+    service = PrioritizationService(db)
+    return service.score_finding(finding_id)
+
+@router.get("/attack-paths/{project_id}")
+def get_attack_paths(project_id: int, db: Session = Depends(get_db)):
+    service = PrioritizationService(db)
+    return service.map_attack_paths(project_id)
 
 @router.post("/chain-builder")
 def build_chain(finding_ids: List[int], name: str = "Automated Chain", db: Session = Depends(get_db)):

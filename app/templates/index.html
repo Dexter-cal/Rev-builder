@@ -65,6 +65,12 @@
             crackingJobs: [],
             aiModels: [],
             hardwareJobs: [],
+            hardwareInterfaces: [],
+            hardwareSuggestions: [],
+            firmwareImages: [],
+            activeFirmware: null,
+            firmwareAnalyses: [],
+            recompilationJobs: [],
             weaponizationJobs: [],
             emulationTraces: [],
             compiledBinaries: [],
@@ -535,6 +541,81 @@
                 } catch (error) { console.error(error); }
             },
 
+            async discoverInterfaces(deviceId) {
+                this.addToTerminal('Discovering hardware interfaces on device #' + deviceId + '...');
+                try {
+                    const resp = await fetch('/api/hardware/discover/' + deviceId, { method: 'POST' });
+                    this.hardwareInterfaces = await resp.json();
+                    this.addToTerminal('[+] Interface discovery complete. Found ' + this.hardwareInterfaces.length + ' interfaces.');
+                    this.fetchHardwareSuggestions(deviceId);
+                } catch (error) { console.error(error); }
+            },
+
+            async fetchHardwareInterfaces(deviceId) {
+                try {
+                    const resp = await fetch('/api/hardware/interfaces/' + deviceId);
+                    this.hardwareInterfaces = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async fetchHardwareSuggestions(deviceId) {
+                try {
+                    const resp = await fetch('/api/hardware/suggestions/' + deviceId);
+                    this.hardwareSuggestions = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async fetchFirmwareImages(deviceId) {
+                try {
+                    const resp = await fetch('/api/firmware/images/' + deviceId);
+                    this.firmwareImages = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async analyzeFirmware(firmwareId, tool) {
+                this.addToTerminal(`Analyzing firmware #${firmwareId} with ${tool}...`);
+                try {
+                    await fetch(`/api/firmware/analyze/${firmwareId}?tool=${tool}`, { method: 'POST' });
+                    this.fetchFirmwareAnalyses(firmwareId);
+                } catch (error) { console.error(error); }
+            },
+
+            async fetchFirmwareAnalyses(firmwareId) {
+                try {
+                    const resp = await fetch('/api/firmware/analysis/' + firmwareId);
+                    this.firmwareAnalyses = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
+            async createRecompilationJob(binaryId, source) {
+                this.addToTerminal('Creating recompilation job...');
+                try {
+                    const resp = await fetch(`/api/compiler/recompile/create?project_id=${this.activeProject.id}&binary_id=${binaryId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(source)
+                    });
+                    const data = await resp.json();
+                    this.fetchRecompilationJobs();
+                    return data.id;
+                } catch (error) { console.error(error); }
+            },
+
+            async runRecompilation(jobId) {
+                this.addToTerminal('Running recompilation job #' + jobId + '...');
+                try {
+                    await fetch('/api/compiler/recompile/run/' + jobId, { method: 'POST' });
+                    this.fetchRecompilationJobs();
+                } catch (error) { console.error(error); }
+            },
+
+            async fetchRecompilationJobs() {
+                try {
+                    const resp = await fetch('/api/compiler/recompile/jobs/' + this.activeProject.id);
+                    this.recompilationJobs = await resp.json();
+                } catch (error) { console.error(error); }
+            },
+
             async discoverHardware() {
                 this.addToTerminal('Scanning local hardware buses (USB/Serial)...');
                 try {
@@ -804,10 +885,10 @@
             <div @click="activeModule = 'wordlists'; fetchWordlists()" :class="activeModule === 'wordlists' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Wordlist Manager">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
             </div>
-            <div @click="activeModule = 'hardware'; fetchHardwareJobs()" :class="activeModule === 'hardware' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Hardware Lab">
+            <div @click="activeModule = 'hardware'; fetchHardwareJobs(1); fetchHardwareInterfaces(1); fetchHardwareSuggestions(1); fetchFirmwareImages(1)" :class="activeModule === 'hardware' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Hardware Lab">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
             </div>
-            <div @click="activeModule = 'code_lab'; fetchCompiledBinaries()" :class="activeModule === 'code_lab' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Code Lab (Compile/Modify)">
+            <div @click="activeModule = 'code_lab'; fetchCompiledBinaries(); fetchRecompilationJobs()" :class="activeModule === 'code_lab' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Code Lab (Compile/Modify)">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
             </div>
             <div @click="activeModule = 'docs'" :class="activeModule === 'docs' ? 'text-red-500' : 'text-slate-500'" class="cursor-pointer hover:text-slate-300" title="Learning & Knowledge Base">
@@ -1076,48 +1157,134 @@
 
             <!-- Hardware Lab View -->
             <div x-show="activeModule === 'hardware'" class="flex-grow p-6 overflow-y-auto">
-                <div class="w-full max-w-6xl mx-auto">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-xl font-bold text-slate-300">Hardware Lab / Physical Interaction</h2>
-                        <div class="flex space-x-2">
-                            <button @click="discoverHardware()" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase flex items-center">
-                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                                Discover Devices
-                            </button>
-                            <button @click="triggerHardwareAction('uart', 'sniff')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">Sniff UART</button>
-                            <button @click="triggerHardwareAction('jtag', 'dump')" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">JTAG Dump</button>
-                            <button @click="triggerHardwareAction('usb', 'fuzz')" class="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">USB Fuzz</button>
+                <div class="w-full max-w-7xl mx-auto">
+                    <!-- Warnings Section -->
+                    <div class="bg-red-900/20 border border-red-500/50 p-4 rounded-lg mb-8 flex items-start space-x-4">
+                        <svg class="w-8 h-8 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                        <div>
+                            <h3 class="text-red-500 font-bold text-sm uppercase tracking-wider">CAUTION: PHYSICAL HARDWARE INTERACTION</h3>
+                            <p class="text-[11px] text-slate-300 mt-1">Ensure correct voltage levels (1.8V/3.3V/5V) before connecting probes. Physical damage or data loss can occur. Unauthorized tampering with embedded systems may violate local laws and manufacturer warranties.</p>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-4 gap-6 mb-8">
-                        <template x-for="hw in connectedHardware" :key="hw.id">
-                            <div class="bg-dark-900 border border-slate-700 p-4 rounded-lg relative group">
-                                <div class="w-2 h-2 bg-green-500 rounded-full absolute top-2 right-2 animate-pulse"></div>
-                                <div class="text-[8px] font-bold text-slate-500 uppercase" x-text="hw.vendor"></div>
-                                <div class="text-xs font-bold text-slate-200 mt-1" x-text="hw.name"></div>
-                                <div class="text-[10px] text-blue-400 font-mono mt-2" x-text="hw.port"></div>
-                                <div class="mt-4 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button class="text-[8px] bg-slate-800 px-2 py-1 rounded text-slate-300">Connect</button>
-                                    <button class="text-[8px] bg-red-900/30 px-2 py-1 rounded text-red-400">Tease</button>
+                    <div class="grid grid-cols-12 gap-6">
+                        <!-- Left: Probe Manager -->
+                        <div class="col-span-12 lg:col-span-4 space-y-6">
+                            <div class="bg-dark-900 border border-slate-800 rounded-xl p-5 shadow-2xl">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h2 class="text-sm font-bold text-slate-300 uppercase tracking-widest">Probe Manager</h2>
+                                    <button @click="discoverInterfaces(1)" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase">Discover Pins</button>
+                                </div>
+                                <div class="space-y-3">
+                                    <template x-for="iface in hardwareInterfaces" :key="iface.id">
+                                        <div class="bg-dark-950 border border-slate-800 p-3 rounded group hover:border-blue-500/50 transition-colors">
+                                            <div class="flex justify-between items-start">
+                                                <div class="text-xs font-bold text-blue-400" x-text="iface.type"></div>
+                                                <span class="text-[9px] bg-slate-800 px-1.5 rounded" x-text="iface.voltage + 'V'"></span>
+                                            </div>
+                                            <div class="mt-2 grid grid-cols-3 gap-1">
+                                                <template x-for="(pin, label) in (typeof iface.pins === 'string' ? JSON.parse(iface.pins) : iface.pins)" :key="label">
+                                                    <div class="text-[9px] bg-black/40 p-1 rounded flex justify-between">
+                                                        <span class="text-slate-500" x-text="label"></span>
+                                                        <span class="text-green-500 font-bold" x-text="pin"></span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                            <div class="mt-3 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button @click="triggerHardwareAction(1, iface.type, 'sniff')" class="text-[9px] bg-blue-900/30 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Sniff</button>
+                                                <button @click="triggerHardwareAction(1, iface.type, 'dump')" class="text-[9px] bg-purple-900/30 text-purple-400 px-2 py-0.5 rounded border border-purple-500/20">Dump</button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <div x-show="hardwareInterfaces.length === 0" class="text-center py-8 text-slate-600 italic text-[10px]">No interfaces discovered yet.</div>
                                 </div>
                             </div>
-                        </template>
-                        <div x-show="connectedHardware.length === 0" class="col-span-4 border-2 border-dashed border-slate-800 rounded-lg p-8 text-center text-slate-600 italic">
-                            No hardware devices discovered. Connect via USB/Serial and click "Discover".
+
+                            <div x-show="hardwareSuggestions.length > 0" class="bg-dark-900 border border-yellow-500/30 p-5 rounded-xl shadow-2xl">
+                                <h2 class="text-[10px] font-bold text-yellow-500 uppercase tracking-widest mb-4 flex items-center">
+                                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
+                                    Next-Step Intelligence
+                                </h2>
+                                <div class="space-y-3">
+                                    <template x-for="s in hardwareSuggestions" :key="s.title">
+                                        <div class="p-2 bg-dark-950 border-l-2 border-yellow-500 rounded-r">
+                                            <div class="text-[10px] font-bold text-slate-200" x-text="s.title"></div>
+                                            <p class="text-[9px] text-slate-500 mt-1" x-text="s.description"></p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <template x-for="job in hardwareJobs" :key="job.id">
-                            <div class="bg-dark-900 border border-slate-800 p-4 rounded relative overflow-hidden group">
-                                <div class="absolute top-0 right-0 p-2 bg-slate-800 text-[8px] font-bold text-slate-500" x-text="job.status.toUpperCase()"></div>
-                                <h3 class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-2" x-text="job.interface"></h3>
-                                <div class="text-[10px] text-slate-500 mb-4" x-text="'Action: ' + job.action"></div>
-                                <div class="bg-black/50 p-2 rounded font-mono text-[9px] text-green-500 h-32 overflow-y-auto">
-                                    <pre x-text="JSON.stringify(job.data_captured, null, 2)"></pre>
+
+                        <!-- Right: Firmware Analysis Dashboard -->
+                        <div class="col-span-12 lg:col-span-8 space-y-6">
+                            <div class="bg-dark-900 border border-slate-800 rounded-xl p-5 shadow-2xl overflow-hidden">
+                                <div class="flex justify-between items-center mb-6">
+                                    <h2 class="text-sm font-bold text-slate-300 uppercase tracking-widest">Firmware Analysis Dashboard</h2>
+                                    <div class="flex space-x-2">
+                                        <button @click="addToTerminal('Initiating firmware registration...')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1 rounded font-bold uppercase">Manual Load</button>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-6">
+                                    <!-- Images List -->
+                                    <div class="bg-dark-950 border border-slate-800 rounded p-4">
+                                        <h3 class="text-[10px] font-bold text-slate-500 uppercase mb-3">Extracted Images</h3>
+                                        <div class="space-y-2">
+                                            <template x-for="fw in firmwareImages" :key="fw.id">
+                                                <div @click="activeFirmware = fw; fetchFirmwareAnalyses(fw.id)" :class="activeFirmware && activeFirmware.id === fw.id ? 'border-blue-500' : 'border-slate-800'" class="p-2 border rounded cursor-pointer hover:bg-slate-900 transition-all">
+                                                    <div class="flex justify-between items-center">
+                                                        <span class="text-[10px] font-bold text-slate-300" x-text="'FW v' + fw.version"></span>
+                                                        <span class="text-[9px] text-slate-500" x-text="(fw.size / 1024 / 1024).toFixed(2) + ' MB'"></span>
+                                                    </div>
+                                                    <div class="text-[8px] text-blue-500 font-mono mt-1 truncate" x-text="fw.hash"></div>
+                                                </div>
+                                            </template>
+                                            <div x-show="firmwareImages.length === 0" class="text-center py-4 text-slate-700 text-[10px] italic">No firmware images dumped yet. Use JTAG or SPI to dump flash.</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Analysis Tools -->
+                                    <div x-show="activeFirmware" class="bg-dark-950 border border-slate-800 rounded p-4">
+                                        <h3 class="text-[10px] font-bold text-slate-500 uppercase mb-3">Tool Pipeline</h3>
+                                        <div class="grid grid-cols-3 gap-2">
+                                            <button @click="analyzeFirmware(activeFirmware.id, 'binwalk')" class="bg-slate-800 hover:bg-blue-600 text-white text-[9px] font-bold py-2 rounded uppercase">Binwalk</button>
+                                            <button @click="analyzeFirmware(activeFirmware.id, 'emba')" class="bg-slate-800 hover:bg-purple-600 text-white text-[9px] font-bold py-2 rounded uppercase">EMBA</button>
+                                            <button @click="analyzeFirmware(activeFirmware.id, 'firmwalker')" class="bg-slate-800 hover:bg-green-600 text-white text-[9px] font-bold py-2 rounded uppercase">Firmwalker</button>
+                                        </div>
+
+                                        <div class="mt-4 space-y-2 max-h-40 overflow-y-auto">
+                                            <template x-for="ana in firmwareAnalyses" :key="ana.id">
+                                                <div class="bg-black/40 p-2 rounded border border-slate-800">
+                                                    <div class="flex justify-between items-center mb-1">
+                                                        <span class="text-[9px] font-bold text-blue-400 uppercase" x-text="ana.tool_name"></span>
+                                                        <span class="text-[8px] text-slate-600" x-text="ana.created_at"></span>
+                                                    </div>
+                                                    <div class="text-[8px] text-slate-300 line-clamp-2" x-text="JSON.stringify(ana.results)"></div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </template>
+
+                            <!-- Hardware Logs -->
+                            <div class="bg-dark-900 border border-slate-800 rounded-xl p-5 shadow-2xl h-64 flex flex-col">
+                                <h2 class="text-xs font-bold text-slate-300 uppercase tracking-widest mb-4">Real-time Hardware Console</h2>
+                                <div class="flex-grow bg-black rounded p-3 font-mono text-[10px] text-green-500 overflow-y-auto">
+                                    <template x-for="job in hardwareJobs" :key="job.id">
+                                        <div class="mb-2 border-b border-slate-900 pb-1">
+                                            <div class="flex justify-between text-slate-500">
+                                                <span x-text="'[' + job.created_at + '] ' + job.interface + ' ' + job.action"></span>
+                                                <span x-text="job.status.toUpperCase()"></span>
+                                            </div>
+                                            <div x-text="JSON.stringify(job.data_captured)"></div>
+                                        </div>
+                                    </template>
+                                    <div x-show="hardwareJobs.length === 0" class="text-slate-700 italic">Awaiting hardware interaction...</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1275,14 +1442,37 @@
                                         <div x-show="!executionOutput && !executionError" class="text-slate-600 italic">No output yet. Run the code to see results.</div>
                                     </div>
                                 </div>
-                                <!-- Artifacts -->
+                                <!-- Recompilation & Patching -->
                                 <div class="text-slate-500 border-t border-slate-800 pt-4">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <div class="font-bold text-[9px] uppercase tracking-widest">Recompilation & Patching</div>
+                                        <button @click="fetchRecompilationJobs()" class="text-[8px] text-slate-600 hover:text-slate-400 uppercase">Refresh Jobs</button>
+                                    </div>
+
+                                    <div class="space-y-2 mb-4">
+                                        <template x-for="job in recompilationJobs" :key="job.id">
+                                            <div class="bg-dark-900 border border-slate-800 p-2 rounded">
+                                                <div class="flex justify-between items-center">
+                                                    <span class="text-[9px] font-bold text-blue-400" x-text="'Job #' + job.id + ' (' + job.target_arch + ')'"></span>
+                                                    <span :class="job.status === 'success' ? 'text-green-500' : 'text-yellow-500'" class="text-[8px] font-bold uppercase" x-text="job.status"></span>
+                                                </div>
+                                                <div class="text-[8px] text-slate-600 mt-1 truncate" x-text="job.logs.split('\n').pop()"></div>
+                                                <div x-show="job.status === 'pending'" class="mt-2">
+                                                    <button @click="runRecompilation(job.id)" class="bg-blue-600 hover:bg-blue-500 text-white text-[8px] px-2 py-0.5 rounded font-bold uppercase">Run Job</button>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+
                                     <div class="font-bold mb-2 text-[9px] uppercase tracking-widest">Compiled Artifacts:</div>
                                     <template x-for="bin in compiledBinaries" :key="bin.id">
                                         <div class="flex justify-between items-center bg-dark-900 p-2 rounded mb-1 border border-slate-800 hover:border-slate-700">
-                                            <span class="text-[10px] text-green-500" x-text="bin.path.split('/').pop()"></span>
+                                            <div class="flex flex-col">
+                                                <span class="text-[10px] text-green-500" x-text="bin.path.split('/').pop()"></span>
+                                                <span class="text-[8px] text-slate-600" x-text="bin.arch + ' | ' + bin.size + ' bytes'"></span>
+                                            </div>
                                             <div class="flex items-center space-x-2">
-                                                <span class="text-[8px] text-slate-600" x-text="bin.size + ' bytes'"></span>
+                                                <button @click="createRecompilationJob(bin.id, codeLabSource)" class="text-purple-500 hover:text-purple-400 text-[8px] font-bold uppercase">PATCH</button>
                                                 <button @click="binary_id = bin.id; codeLabLanguage = 'c'; runCode()" class="text-blue-500 hover:text-blue-400 text-[8px] font-bold uppercase">RUN</button>
                                             </div>
                                         </div>

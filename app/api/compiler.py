@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.services.real_offensive_service import CompilerService, ExecutionService
+from app.services.firmware_service import FirmwareService
 from app.models import models
 
 router = APIRouter()
@@ -33,3 +34,17 @@ def run_code(project_id: int, language: str, source_code: str = Body(...), binar
 @router.get("/binaries/{project_id}")
 def list_compiled_binaries(project_id: int, db: Session = Depends(get_db)):
     return db.query(models.Binary).filter(models.Binary.hash == "locally_compiled").all()
+
+@router.post("/recompile/create")
+def create_recompilation_job(project_id: int, binary_id: int, source_code: str = Body(...), target_arch: str = "arm", db: Session = Depends(get_db)):
+    service = FirmwareService(db)
+    return service.create_recompilation_job(project_id, binary_id, source_code, target_arch)
+
+@router.post("/recompile/run/{job_id}")
+def run_recompilation(job_id: int, db: Session = Depends(get_db)):
+    service = FirmwareService(db)
+    return service.run_recompilation(job_id)
+
+@router.get("/recompile/jobs/{project_id}")
+def get_recompilation_jobs(project_id: int, db: Session = Depends(get_db)):
+    return db.query(models.RecompilationJob).filter(models.RecompilationJob.project_id == project_id).all()

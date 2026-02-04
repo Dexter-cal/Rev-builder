@@ -1,44 +1,36 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database.session import get_db
+from app.services.firmware_service import FirmwareService
 from app.models import models
-from app.services.asset_service import AssetService
-import os
 
 router = APIRouter()
 
-@router.post("/extract/{binary_id}")
-def extract_firmware(binary_id: int, db: Session = Depends(get_db)):
-    binary = db.query(models.Binary).filter(models.Binary.id == binary_id).first()
-    if not binary:
-        raise HTTPException(status_code=404, detail="Binary not found")
+@router.post("/register")
+def register_firmware(device_id: int, file_path: str, version: str = "1.0.0", db: Session = Depends(get_db)):
+    service = FirmwareService(db)
+    return service.register_firmware(device_id, file_path, version)
 
-    project_id = binary.device.project_id
+@router.post("/extract/{firmware_id}")
+def extract_firmware(firmware_id: int, db: Session = Depends(get_db)):
+    service = FirmwareService(db)
+    path = service.extract_firmware(firmware_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="Firmware not found")
+    return {"message": "Extraction complete", "path": path}
 
-    # Simulation: Extraction logic
-    extracted_files = [
-        "etc/passwd",
-        "etc/shadow",
-        "bin/busybox",
-        "usr/lib/libnvram.so",
-        "init"
-    ]
+@router.post("/analyze/{firmware_id}")
+def analyze_firmware(firmware_id: int, tool: str, db: Session = Depends(get_db)):
+    service = FirmwareService(db)
+    analysis = service.run_analysis(firmware_id, tool)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Firmware not found")
+    return analysis
 
-    results = []
-    for file_path in extracted_files:
-        # Save simulated content
-        filename = file_path.replace("/", "_")
-        full_path = AssetService.save_asset(
-            project_id,
-            "firmware_extracted",
-            f"ext_{binary.id}_{filename}",
-            f"Simulated content for {file_path}".encode()
-        )
-        results.append({"original_path": file_path, "stored_path": full_path})
+@router.get("/images/{device_id}")
+def get_firmware_images(device_id: int, db: Session = Depends(get_db)):
+    return db.query(models.FirmwareImage).filter(models.FirmwareImage.device_id == device_id).all()
 
-    return {
-        "message": "Firmware extraction complete",
-        "binary": binary.path,
-        "extracted_count": len(results),
-        "files": results
-    }
+@router.get("/analysis/{firmware_id}")
+def get_analysis_results(firmware_id: int, db: Session = Depends(get_db)):
+    return db.query(models.FirmwareAnalysis).filter(models.FirmwareAnalysis.firmware_id == firmware_id).all()

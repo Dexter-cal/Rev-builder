@@ -471,6 +471,64 @@ class HardwareJob(Base):
     status = Column(String)
     created_at = Column(DateTime, server_default=func.now())
 
+class HardwareInterface(Base):
+    __tablename__ = "hardware_interfaces"
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id"))
+    type = Column(String)  # UART, JTAG, SPI, I2C, USB, GPIO
+    pins = Column(JSON)    # e.g., {"TX": 1, "RX": 2} or {"TDI": 5, ...}
+    voltage = Column(Float) # 1.8, 3.3, 5.0
+    baud_rate = Column(Integer, nullable=True)
+    notes = Column(Text)
+    discovered_at = Column(DateTime, server_default=func.now())
+
+class FirmwareImage(Base):
+    __tablename__ = "firmware_images"
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id"))
+    binary_id = Column(Integer, ForeignKey("binaries.id"), nullable=True)
+    version = Column(String)
+    file_path = Column(String) # Path to the raw .bin/.img file
+    extraction_path = Column(String) # Path to the extracted filesystem
+    hash = Column(String)
+    size = Column(Integer)
+    created_at = Column(DateTime, server_default=func.now())
+    notes = Column(Text)
+
+class FirmwareAnalysis(Base):
+    __tablename__ = "firmware_analyses"
+    id = Column(Integer, primary_key=True)
+    firmware_id = Column(Integer, ForeignKey("firmware_images.id"))
+    tool_name = Column(String) # binwalk, emba, firmwalker
+    results = Column(JSON)     # Detailed findings
+    report_path = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class RecompilationJob(Base):
+    __tablename__ = "recompilation_jobs"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    binary_id = Column(Integer, ForeignKey("binaries.id"), nullable=True)
+    source_code = Column(Text)
+    patch_diff = Column(Text, nullable=True)
+    target_arch = Column(String)
+    compiler_flags = Column(String)
+    status = Column(String) # pending, compiling, success, failed
+    logs = Column(Text)
+    output_binary_id = Column(Integer, ForeignKey("binaries.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class PayloadSuccessRate(Base):
+    __tablename__ = "payload_success_rates"
+    id = Column(Integer, primary_key=True)
+    payload_id = Column(Integer, ForeignKey("payloads.id"))
+    arch = Column(String)
+    os = Column(String)
+    success_count = Column(Integer, default=0)
+    fail_count = Column(Integer, default=0)
+    crash_count = Column(Integer, default=0)
+    notes = Column(Text)
+
 class SystemConfig(Base):
     __tablename__ = "system_configs"
     id = Column(Integer, primary_key=True)

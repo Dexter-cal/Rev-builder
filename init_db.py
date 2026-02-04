@@ -2,7 +2,7 @@ import datetime
 import json
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models.models import Base, Project, Device, Binary, Function, Finding, ExploitChain, Session, AIModel, Wordlist, Payload, Variant, Credential, AttackSurface
+from app.models.models import Base, Project, Device, Binary, Function, Finding, ExploitChain, Session, AIModel, Wordlist, Payload, Variant, Credential, AttackSurface, HardwareInterface, FirmwareImage, FirmwareAnalysis, RecompilationJob, PayloadSuccessRate
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -114,6 +114,22 @@ def seed():
     as1 = AttackSurface(project_id=p1.id, ip="192.168.1.1", port=80, protocol="tcp", service="httpd", version="BusyBox httpd 1.34.1")
     as2 = AttackSurface(project_id=p1.id, ip="192.168.1.1", port=22, protocol="tcp", service="sshd", version="OpenSSH 8.9")
     db.add_all([as1, as2])
+    db.commit()
+
+    # 12. Hardware Interfaces
+    hi1 = HardwareInterface(device_id=d1.id, type="UART", pins={"TX": 1, "RX": 2, "GND": 3}, voltage=3.3, baud_rate=115200)
+    hi2 = HardwareInterface(device_id=d1.id, type="JTAG", pins={"TDI": 8, "TDO": 9, "TCK": 10, "TMS": 11}, voltage=3.3)
+    db.add_all([hi1, hi2])
+    db.commit()
+
+    # 13. Firmware Images
+    fi1 = FirmwareImage(device_id=d1.id, binary_id=b1.id, version="1.34.1", file_path="/storage/firmware/eagle_eye_v1.bin", hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", size=16777216)
+    db.add(fi1)
+    db.commit()
+
+    # 14. Payload Success Rates
+    psr1 = PayloadSuccessRate(payload_id=pld1.id, arch="arm", os="linux", success_count=12, fail_count=2, crash_count=1)
+    db.add(psr1)
     db.commit()
 
     db.close()

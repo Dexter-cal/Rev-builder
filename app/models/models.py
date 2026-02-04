@@ -529,6 +529,52 @@ class PayloadSuccessRate(Base):
     crash_count = Column(Integer, default=0)
     notes = Column(Text)
 
+class WorkflowNode(Base):
+    __tablename__ = "workflow_nodes"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    type = Column(String) # target, finding, payload, session, hardware, clone
+    reference_id = Column(Integer) # ID of the actual object
+    pos_x = Column(Float)
+    pos_y = Column(Float)
+    data = Column(JSON) # Additional UI state
+
+class WorkflowEdge(Base):
+    __tablename__ = "workflow_edges"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    source_node_id = Column(Integer, ForeignKey("workflow_nodes.id"))
+    target_node_id = Column(Integer, ForeignKey("workflow_nodes.id"))
+    type = Column(String) # exploits, contains, based_on, triggers
+
+class ProjectState(Base):
+    __tablename__ = "project_states"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    name = Column(String)
+    state_data = Column(JSON) # Snapshot of interesting tables or project metadata
+    timestamp = Column(DateTime, server_default=func.now())
+
+class ActionHistory(Base):
+    __tablename__ = "action_history"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    action_type = Column(String)
+    description = Column(Text)
+    undo_data = Column(JSON) # Data needed to revert the action
+    redo_data = Column(JSON) # Data needed to re-apply the action
+    timestamp = Column(DateTime, server_default=func.now())
+
+class InjectionSnippet(Base):
+    __tablename__ = "injection_snippets"
+    id = Column(Integer, primary_key=True)
+    category = Column(String) # SQLi, XSS, CmdInj, FormatStr, Shellcode
+    name = Column(String)
+    content = Column(Text)
+    description = Column(Text)
+    platform = Column(String)
+    created_at = Column(DateTime, server_default=func.now())
+
 class SystemConfig(Base):
     __tablename__ = "system_configs"
     id = Column(Integer, primary_key=True)

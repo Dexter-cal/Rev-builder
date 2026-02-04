@@ -2,7 +2,7 @@ import datetime
 import json
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models.models import Base, Project, Device, Binary, Function, Finding, ExploitChain, Session, AIModel, Wordlist, Payload, Variant, Credential, AttackSurface, HardwareInterface, FirmwareImage, FirmwareAnalysis, RecompilationJob, PayloadSuccessRate, InjectionSnippet, Playbook, ProjectCollaborator, FunctionCall
+from app.models.models import Base, Project, Device, Binary, Function, Finding, ExploitChain, Session, AIModel, Wordlist, Payload, Variant, Credential, AttackSurface, HardwareInterface, FirmwareImage, FirmwareAnalysis, RecompilationJob, PayloadSuccessRate, InjectionSnippet, Playbook, ProjectCollaborator, FunctionCall, DecompilationJob, DeploymentJob
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})

@@ -636,6 +636,26 @@ class ThreatModel(Base):
     risk_summary = Column(Text)
     last_updated = Column(DateTime, server_default=func.now())
 
+class DecompilationJob(Base):
+    __tablename__ = "decompilation_jobs"
+    id = Column(Integer, primary_key=True)
+    binary_id = Column(Integer, ForeignKey("binaries.id"))
+    status = Column(String) # pending, in_progress, completed, failed
+    source_output = Column(Text)
+    logs = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+
+class DeploymentJob(Base):
+    __tablename__ = "deployment_jobs"
+    id = Column(Integer, primary_key=True)
+    binary_id = Column(Integer, ForeignKey("binaries.id"))
+    target_device_id = Column(Integer, ForeignKey("devices.id"))
+    target_type = Column(String) # real, clone, copy
+    status = Column(String) # pending, deploying, success, failed
+    deployment_path = Column(String) # Path on the target device
+    logs = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+
 class FunctionCall(Base):
     __tablename__ = "function_calls"
     id = Column(Integer, primary_key=True)
